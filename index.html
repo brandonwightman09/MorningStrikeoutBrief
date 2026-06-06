@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16140f">
+<title>Raya — Strikeout Brief</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Raya Brief">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Saira+Condensed:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:oklch(0.165 0.012 72);--card:oklch(0.205 0.013 74);--tile:oklch(0.150 0.011 72);
+    --ink:oklch(0.95 0.012 88);--mute:oklch(0.66 0.012 82);--faint:oklch(0.52 0.010 80);
+    --line:oklch(0.30 0.009 76);--acc:oklch(0.80 0.105 86);--acc-d:oklch(0.62 0.085 82);
+    --over:oklch(0.76 0.10 152);--under:oklch(0.72 0.13 34);
+  }
+  html,body{background:oklch(0.125 0.010 72);min-height:100%;-webkit-font-smoothing:antialiased}
+  body{display:flex;justify-content:center;padding:max(18px,env(safe-area-inset-top)) 14px 26px;
+    font-family:'Hanken Grotesk',system-ui,sans-serif;color:var(--ink)}
+  .wrap{width:446px;max-width:100%}
+
+  /* ── auth screen ─────────────────────────────── */
+  .auth{background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:40px 28px;text-align:center;margin-top:8vh}
+  .auth .mark{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:52px;letter-spacing:.05em;color:var(--acc);line-height:.9;text-transform:uppercase}
+  .auth .tag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--mute);margin-top:8px}
+  .auth p{color:var(--mute);font-size:14px;margin:22px 0 18px;line-height:1.5}
+  .auth input{width:100%;background:var(--tile);border:1px solid var(--line);border-radius:10px;
+    padding:13px 14px;color:var(--ink);font-size:15px;font-family:inherit;outline:none}
+  .auth input:focus{border-color:var(--acc-d)}
+  .auth button{width:100%;margin-top:11px;background:var(--acc);color:oklch(0.165 0.012 72);border:none;
+    border-radius:10px;padding:13px;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:16px;
+    letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+  .auth button:disabled{opacity:.5;cursor:default}
+  .auth .msg{margin-top:16px;font-size:13px;min-height:18px;line-height:1.45}
+  .auth .msg.ok{color:var(--over)}.auth .msg.err{color:var(--under)}
+
+  /* ── header ─────────────────────────────── */
+  .bct{background:var(--bg);border-radius:16px;padding:26px 26px 22px;display:flex;flex-direction:column}
+  .bct-hdr{display:flex;align-items:center;gap:13px;padding-bottom:16px;margin-bottom:18px;border-bottom:2px solid var(--line);position:relative}
+  .bct-hdr::after{content:'';position:absolute;left:0;bottom:-2px;width:84px;height:2px;background:var(--acc)}
+  .bct-bars{display:flex;gap:3px;align-items:center}
+  .bct-bars i{width:5px;height:26px;background:var(--acc);border-radius:1px;transform:skewX(-12deg)}
+  .bct-bars i:nth-child(2){height:20px;opacity:.6}.bct-bars i:nth-child(3){height:14px;opacity:.35}
+  .bct-logo{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:38px;letter-spacing:.04em;line-height:.9;text-transform:uppercase}
+  .bct-meta{margin-left:auto;text-align:right;line-height:1.35}
+  .bct-meta b{display:block;font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:14px;letter-spacing:.1em;text-transform:uppercase}
+  .bct-meta span{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+
+  /* ── cards ─────────────────────────────── */
+  .bct-list{display:flex;flex-direction:column;gap:11px}
+  .bct-card{display:grid;grid-template-columns:58px 1fr;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;position:relative}
+  .bct-rail{background:linear-gradient(160deg,var(--card),var(--tile));position:relative;display:flex;align-items:center;justify-content:center;border-right:1px solid var(--line)}
+  .bct-rail::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--acc)}
+  .bct-rank{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:38px;line-height:.85;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .bct-rank b{display:block;font-size:8px;font-weight:700;letter-spacing:.18em;color:var(--faint);text-align:center;margin-bottom:3px}
+  .bct-main{padding:13px 15px 14px;min-width:0}
+  .bct-name{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:25px;line-height:.98;text-transform:uppercase;letter-spacing:.01em}
+  .bct-match{font-family:'Saira Condensed',sans-serif;font-weight:500;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;margin-top:1px}
+  .bct-bet{display:flex;align-items:center;margin:11px 0 12px;padding:7px 12px;border-radius:8px;border-left:4px solid}
+  .bct-bet.bct-over{background:color-mix(in oklch,var(--over) 12%,transparent);border-color:var(--over)}
+  .bct-bet.bct-under{background:color-mix(in oklch,var(--under) 12%,transparent);border-color:var(--under)}
+  .bct-bet .bct-side{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:19px;text-transform:uppercase;letter-spacing:.03em}
+  .bct-over .bct-side{color:var(--over)}.bct-under .bct-side{color:var(--under)}
+  .bct-bet .bct-ln{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:19px;margin-left:11px}
+  .bct-bet .bct-proj{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--mute);font-variant-numeric:tabular-nums}
+  .bct-bet .bct-proj b{color:var(--ink);font-weight:600}
+  .bct-tiles{display:flex;gap:9px}
+  .bct-tile{flex:1;background:var(--tile);border:1px solid var(--line);border-radius:10px;padding:9px 11px 10px;position:relative;overflow:hidden}
+  .bct-tile.bct-best{border-color:var(--acc-d)}.bct-tile.bct-off{opacity:.45}
+  .bct-tbk{display:flex;align-items:center;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;color:var(--mute);text-transform:uppercase}
+  .bct-tdot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;margin-right:6px}
+  .bct-tdot.bct-dk{background:oklch(0.74 0.16 150)}.bct-tdot.bct-fd{background:oklch(0.66 0.16 250)}
+  .bct-trow{display:flex;align-items:baseline;margin-top:5px}
+  .bct-tln{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:24px;line-height:.9;font-variant-numeric:tabular-nums}
+  .bct-tpx{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--acc);font-variant-numeric:tabular-nums;margin-left:9px}
+  .bct-tpx.bct-na{color:var(--faint)}
+  .bct-ribbon{position:absolute;top:0;right:0;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--bg);background:var(--acc);padding:2px 8px;border-bottom-left-radius:8px}
+  .bct-foot{display:flex;align-items:center;justify-content:space-between;margin-top:18px;padding-top:13px;border-top:2px solid var(--line);font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+  .bct-foot b{color:var(--acc-d);font-weight:600}
+  .bct-foot a{color:var(--faint);text-decoration:none;cursor:pointer}
+  .bct-empty{color:var(--mute);text-align:center;padding:40px 20px;font-family:'Saira Condensed',sans-serif;text-transform:uppercase;letter-spacing:.08em}
+  .loading{text-align:center;padding:60px 20px;color:var(--mute);font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="loading">Loading…</div>
+</div>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+/* ════════════════════════════════════════════════════════════
+   CONFIG — fill these two in (Supabase dashboard → Settings → API).
+   Both are safe to ship in the browser; row-level security protects the data.
+   ════════════════════════════════════════════════════════════ */
+const SUPABASE_URL  = 'https://zuijmbyrwzixnhcaqgpl.supabase.co';
+const SUPABASE_ANON_KEY = 'PASTE_YOUR_PUBLISHABLE_ANON_KEY_HERE';
+/* ════════════════════════════════════════════════════════════ */
+
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const app = document.getElementById('app');
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtLine = x => (x == null ? '' : (+x).toString());
+const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
+
+function authScreen(msg, cls) {
+  app.innerHTML = `
+    <div class="auth">
+      <div class="mark">Raya</div>
+      <div class="tag">Strikeout Brief</div>
+      <p>Enter your email and we'll send you a one-tap sign-in link. No password.</p>
+      <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com" />
+      <button id="send">Send sign-in link</button>
+      <div class="msg ${cls||''}" id="msg">${msg||''}</div>
+    </div>`;
+  const email = document.getElementById('email');
+  const btn = document.getElementById('send');
+  const out = document.getElementById('msg');
+  btn.onclick = async () => {
+    const addr = email.value.trim();
+    if (!addr || !addr.includes('@')) { out.className='msg err'; out.textContent='Enter a valid email.'; return; }
+    btn.disabled = true; out.className='msg'; out.textContent='Sending…';
+    const { error } = await sb.auth.signInWithOtp({
+      email: addr,
+      options: { emailRedirectTo: window.location.origin + window.location.pathname }
+    });
+    if (error) { out.className='msg err'; out.textContent=error.message; btn.disabled=false; }
+    else { out.className='msg ok'; out.textContent='Check your email for the sign-in link.'; }
+  };
+  email.addEventListener('keydown', e => { if (e.key === 'Enter') btn.click(); });
+}
+
+function card(p, i) {
+  const differ = p.dk_line != null && p.fd_line != null && (+p.dk_line) !== (+p.fd_line);
+  const sideOver = (p.bet_side || '').toLowerCase() === 'over';
+  const tile = (bk, label, dot, ln, px) => {
+    if (ln == null) return '';
+    const best = p.best_book === bk;
+    const off  = differ && !best;
+    const cls  = 'bct-tile' + (best ? ' bct-best' : '') + (off ? ' bct-off' : '');
+    const ribbon = best ? '<span class="bct-ribbon">Raya Bet</span>' : '';
+    const price = off ? '<span class="bct-tpx bct-na">off line</span>'
+                      : `<span class="bct-tpx">${fmtOdds(px)}</span>`;
+    return `<div class="${cls}">${ribbon}
+      <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${label}</div>
+      <div class="bct-trow"><span class="bct-tln">${fmtLine(ln)}</span>${price}</div></div>`;
+  };
+  return `<div class="bct-card">
+    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
+    <div class="bct-main">
+      <div class="bct-name">${esc(p.pitcher_name)}</div>
+      <div class="bct-match">${esc(p.event_name)}</div>
+      <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
+        <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
+        <span class="bct-ln">${fmtLine(p.book_line)}</span>
+        <span class="bct-proj">PROJ <b>${p.raya_projected_k!=null?(+p.raya_projected_k).toFixed(2):'--'} K</b></span>
+      </div>
+      <div class="bct-tiles">
+        ${tile('draftkings','DraftKings','bct-dk',p.dk_line,p.dk_price)}
+        ${tile('fanduel','FanDuel','bct-fd',p.fd_line,p.fd_price)}
+      </div>
+    </div></div>`;
+}
+
+async function briefScreen() {
+  app.innerHTML = `<div class="loading">Loading brief…</div>`;
+  const { data, error } = await sb.from('mlb_k_brief').select('*').order('rank', { ascending: true });
+  if (error) {
+    app.innerHTML = `<div class="bct"><div class="bct-empty">Couldn't load the brief.<br>${esc(error.message)}</div></div>`;
+    return;
+  }
+  const picks = data || [];
+  let dateLbl = '';
+  if (picks.length && picks[0].run_at) {
+    dateLbl = new Date(picks[0].run_at).toLocaleDateString('en-US',
+      { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase();
+  }
+  const body = picks.length
+    ? picks.map((p,idx)=>card(p,idx+1)).join('')
+    : '<div class="bct-empty">No picks posted yet today.</div>';
+  app.innerHTML = `<div class="bct">
+    <div class="bct-hdr">
+      <div class="bct-bars"><i></i><i></i><i></i></div>
+      <div class="bct-logo">Raya</div>
+      <div class="bct-meta"><b>Strikeout Brief</b><span>${dateLbl} &middot; Opening Lines</span></div>
+    </div>
+    <div class="bct-list">${body}</div>
+    <div class="bct-foot"><span>${picks.length} Strikeout Calls</span>
+      <span>Model <b>linreg_k_v1</b> &middot; <a id="signout">Sign out</a></span></div>
+  </div>`;
+  document.getElementById('signout').onclick = async () => { await sb.auth.signOut(); route(); };
+}
+
+async function route() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) briefScreen(); else authScreen();
+}
+
+sb.auth.onAuthStateChange((_e, session) => { if (session) briefScreen(); });
+route();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>
