@@ -53,8 +53,8 @@
   .bct-meta span{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
 
   /* ── tabs (added) ─────────────────────────── */
-  .tabs{display:flex;gap:7px;margin-bottom:14px}
-  .tab{flex:1;text-align:center;background:var(--tile);border:1px solid var(--line);border-radius:11px;padding:10px;
+  .tabs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
+  .tab{flex:1 1 calc(50% - 4px);text-align:center;background:var(--tile);border:1px solid var(--line);border-radius:11px;padding:10px;
     font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.07em;text-transform:uppercase;
     color:var(--mute);cursor:pointer}
   .tab.on{background:var(--acc);color:oklch(0.165 0.012 72);border-color:var(--acc)}
@@ -96,6 +96,8 @@
   .bct-foot b{color:var(--acc-d);font-weight:600}
   .bct-foot a{color:var(--faint);text-decoration:none;cursor:pointer}
   .bct-empty{color:var(--mute);text-align:center;padding:40px 20px;font-family:'Saira Condensed',sans-serif;text-transform:uppercase;letter-spacing:.08em}
+  .wc-note{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:11px;
+    font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.65;color:var(--mute);letter-spacing:.01em}
   .loading{text-align:center;padding:60px 20px;color:var(--mute);font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
 </style>
 </head>
@@ -117,8 +119,9 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 const fmtLine = x => (x == null ? '' : (+x).toString());
 const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
 
-let view = 'k';        // 'k' | 'tennis'
+let view = 'k';        // 'k' | 'tennis' | 'epl' | 'wc'
 let tstat = 'ace';     // 'ace' | 'df'
+let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
 
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
@@ -231,11 +234,58 @@ function tennisCard(p, i) {
     </div></div>`;
 }
 
+/* ── EPL shots card (PrizePicks-shaped, mirrors tennis) ── */
+function soccerCard(p, i) {
+  const sideOver = (p.bet_side || '').toLowerCase() === 'over';
+  const unit = ({shots:'SH','shots on target':'SOT',sot:'SOT',key_passes:'KP',kp:'KP'})[(p.stat||'').toLowerCase()] || (p.stat ? p.stat.toUpperCase() : 'SH');
+  const sideProb = p.p_over == null ? null : (sideOver ? +p.p_over : 1 - +p.p_over);
+  const ha = (p.home_away||'').toUpperCase();
+  const ppTile = `<div class="bct-tile bct-best"><span class="bct-ribbon">PrizePicks</span>
+    <div class="bct-tbk"><span class="bct-tdot bct-pp"></span>${esc((p.odds_type||'std').toUpperCase())}</div>
+    <div class="bct-trow"><span class="bct-tln">${fmtLine(p.line)}</span></div></div>`;
+  const modelTile = `<div class="bct-tile">
+    <div class="bct-tbk"><span class="bct-tdot bct-dk"></span>Model${p.confidence?' &middot; '+esc(p.confidence):''}</div>
+    <div class="bct-trow"><span class="bct-tln">${sideProb!=null?Math.round(sideProb*100)+'%':'--'}</span>
+      <span class="bct-tpx">${esc((p.bet_side||'').toUpperCase())}</span></div></div>`;
+  return `<div class="bct-card">
+    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
+    <div class="bct-main">
+      <div class="bct-name">${esc(p.player_name)}</div>
+      <div class="bct-match">${esc(p.team||'')} vs ${esc(p.opponent||'')}${ha?' &middot; '+ha:''}</div>
+      <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
+        <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
+        <span class="bct-ln">${fmtLine(p.line)}</span>
+        <span class="bct-proj">PROJ <b>${p.raya_proj!=null?(+p.raya_proj).toFixed(2):'--'} ${unit}</b></span>
+      </div>
+      <div class="bct-tiles">${ppTile}${modelTile}</div>
+    </div></div>`;
+}
+
+/* ── World Cup watch card (tracked line, NOT a call) ── */
+function wcCard(r, i) {
+  const tag = wstat === 'Shots' ? 'SH' : 'SOT';
+  return `<div class="bct-card">
+    <div class="bct-rail"><div class="bct-rank" style="font-size:20px"><b>WC</b>${String(i).padStart(2,'0')}</div></div>
+    <div class="bct-main">
+      <div class="bct-name">${esc(r.player)}</div>
+      <div class="bct-match">${esc(r.team||'')} vs ${esc(r.opponent||'')}</div>
+      <div class="bct-bet" style="border-color:var(--acc-d);background:color-mix(in oklch,var(--acc) 9%,transparent)">
+        <span class="bct-side" style="color:var(--acc)">Watch</span>
+        <span class="bct-ln">${fmtLine(r.line)}</span>
+        <span class="bct-proj">${tag} &middot; <b>CLV-tracked</b></span>
+      </div>
+    </div></div>`;
+}
+
 function shell(metaTitle, metaSub, body, footL, footR) {
   const subtabs = view === 'tennis' ? `
     <div class="subtabs">
       <div class="subtab ${tstat==='ace'?'on':''}" data-stat="ace">Aces</div>
       <div class="subtab ${tstat==='df'?'on':''}" data-stat="df">Double Faults</div>
+    </div>` : view === 'wc' ? `
+    <div class="subtabs">
+      <div class="subtab ${wstat==='Shots'?'on':''}" data-stat="Shots">Shots</div>
+      <div class="subtab ${wstat==='Shots On Target'?'on':''}" data-stat="Shots On Target">On Target</div>
     </div>` : '';
   app.innerHTML = `<div class="bct">
     <div class="bct-hdr">
@@ -246,6 +296,8 @@ function shell(metaTitle, metaSub, body, footL, footR) {
     <div class="tabs">
       <div class="tab ${view==='k'?'on':''}" data-view="k">Strikeout</div>
       <div class="tab ${view==='tennis'?'on':''}" data-view="tennis">Tennis</div>
+      <div class="tab ${view==='epl'?'on':''}" data-view="epl">EPL Shots</div>
+      <div class="tab ${view==='wc'?'on':''}" data-view="wc">World Cup</div>
     </div>
     ${subtabs}
     <div class="bct-list" id="list">${body}</div>
@@ -253,7 +305,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <span>${footR} &middot; <a id="signout">Sign out</a></span></div>
   </div>`;
   app.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; render(); });
-  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { tstat = t.dataset.stat; render(); });
+  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (view === 'wc') { wstat = t.dataset.stat; } else { tstat = t.dataset.stat; } render(); });
   const so = document.getElementById('signout');
   if (so) so.onclick = async () => { await sb.auth.signOut(); route(); };
 }
@@ -270,7 +322,7 @@ async function render() {
                               : '<div class="bct-empty">No picks posted yet today.</div>';
     shell('Strikeout Brief', `${dateLbl} &middot; Opening Lines`, body,
           `${picks.length} Strikeout Calls`, 'Model <b>linreg_k_v1</b>');
-  } else {
+  } else if (view === 'tennis') {
     const { data, error } = await sb.from('tennis_serve_brief').select('*')
       .eq('stat', tstat).order('rank', { ascending: true });
     if (error) return shell('Tennis Serve Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
@@ -282,6 +334,32 @@ async function render() {
     const label = tstat === 'df' ? 'Double-Fault Calls' : 'Ace Calls';
     shell('Tennis Serve Brief', `${dateLbl} &middot; PrizePicks Lines`, body,
           `${picks.length} ${label}`, 'Model <b>wta_serve_v1</b>');
+  } else if (view === 'epl') {
+    const { data, error } = await sb.from('soccer_shots_brief').select('*').order('rank', { ascending: true });
+    if (error) return shell('EPL Shots Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
+    const picks = data || [];
+    const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
+      { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
+    const body = picks.length ? picks.map((p,idx)=>soccerCard(p,idx+1)).join('')
+                              : '<div class="bct-empty">No EPL picks posted &mdash; the shots brief resumes when the season returns.</div>';
+    shell('EPL Shots Brief', `${dateLbl} &middot; PrizePicks Lines`, body,
+          `${picks.length} Shot Calls`, 'Model <b>understat shots</b>');
+  } else {
+    // World Cup — watch list of tracked lines (no calls; CLV-tracked on HQ)
+    const { data, error } = await sb.from('intl_shots_line_snapshots').select('*')
+      .eq('odds_type', 'standard').order('captured_at', { ascending: false }).limit(400);
+    const rows = error ? [] : (data || []);
+    const latestTs = rows.length ? rows[0].captured_at : null;
+    const board = rows.filter(r => r.captured_at === latestTs && r.stat_type === wstat)
+                      .sort((a,b) => (+b.line) - (+a.line));
+    const note = `<div class="wc-note">World Cup isn't a call board &mdash; the shots model doesn't beat the market, so there are no picks here. These are the standard lines Raya is tracking into the openers; closing-line value is graded on the HQ scoreboard.</div>`;
+    const body = board.length
+      ? note + board.map((r,idx)=>wcCard(r,idx+1)).join('')
+      : `${note}<div class="bct-empty">No standard ${wstat==='Shots'?'shot':'SOT'} lines posted yet.</div>`;
+    const dateLbl = latestTs ? new Date(latestTs).toLocaleDateString('en-US',
+      { weekday:'short', month:'short', day:'numeric' }).toUpperCase() : '';
+    shell('World Cup Watch', `${dateLbl} &middot; Lines Tracked`, body,
+          `${board.length} ${wstat==='Shots'?'Shot':'SOT'} Lines`, 'CLV &middot; <b>grades after Jun 11</b>');
   }
 }
 
