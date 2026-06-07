@@ -35,6 +35,9 @@
     border-radius:10px;padding:13px;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:16px;
     letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
   .auth button:disabled{opacity:.5;cursor:default}
+  .auth input+input{margin-top:9px}
+  .auth .switch{margin-top:15px;font-size:13px;color:var(--mute)}
+  .auth .switch a{color:var(--acc-d);cursor:pointer;text-decoration:none;font-weight:600}
   .auth .msg{margin-top:16px;font-size:13px;min-height:18px;line-height:1.45}
   .auth .msg.ok{color:var(--over)}.auth .msg.err{color:var(--under)}
 
@@ -117,31 +120,56 @@ const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
 let view = 'k';        // 'k' | 'tennis'
 let tstat = 'ace';     // 'ace' | 'df'
 
+// Friends sign in with a simple username + password. Supabase is email-based,
+// so the username is mapped to <username>@raya-hq.com under the hood — no real
+// email is needed or sent (requires "Confirm email" OFF in Supabase Auth).
+const USER_DOMAIN = '@raya-hq.com';
 function authScreen(msg, cls) {
   app.innerHTML = `
     <div class="auth">
       <div class="mark">Raya</div>
       <div class="tag">Daily Brief</div>
-      <p>Enter your email and we'll send you a one-tap sign-in link. No password.</p>
-      <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com" />
-      <button id="send">Send sign-in link</button>
+      <p id="sub">Sign in with your username and password.</p>
+      <input id="user" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="username" />
+      <input id="pass" type="password" autocomplete="current-password" placeholder="password" />
+      <button id="go">Sign in</button>
+      <div class="switch">New here? <a id="toggle">Create an account</a></div>
       <div class="msg ${cls||''}" id="msg">${msg||''}</div>
     </div>`;
-  const email = document.getElementById('email');
-  const btn = document.getElementById('send');
+  const U = document.getElementById('user');
+  const P = document.getElementById('pass');
+  const btn = document.getElementById('go');
   const out = document.getElementById('msg');
-  btn.onclick = async () => {
-    const addr = email.value.trim();
-    if (!addr || !addr.includes('@')) { out.className='msg err'; out.textContent='Enter a valid email.'; return; }
-    btn.disabled = true; out.className='msg'; out.textContent='Sending…';
-    const { error } = await sb.auth.signInWithOtp({
-      email: addr,
-      options: { emailRedirectTo: window.location.origin + window.location.pathname }
-    });
-    if (error) { out.className='msg err'; out.textContent=error.message; btn.disabled=false; }
-    else { out.className='msg ok'; out.textContent='Check your email for the sign-in link.'; }
+  const tog = document.getElementById('toggle');
+  const sub = document.getElementById('sub');
+  let mode = 'signin';
+  tog.onclick = () => {
+    mode = mode === 'signin' ? 'signup' : 'signin';
+    btn.textContent = mode === 'signin' ? 'Sign in' : 'Create account';
+    tog.textContent = mode === 'signin' ? 'Create an account' : 'Have an account? Sign in';
+    sub.textContent = mode === 'signin'
+      ? 'Sign in with your username and password.'
+      : 'Pick a username and password to create your account.';
+    out.textContent = ''; out.className = 'msg';
   };
-  email.addEventListener('keydown', e => { if (e.key === 'Enter') btn.click(); });
+  btn.onclick = async () => {
+    const u = U.value.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+    const p = P.value;
+    if (!u || !p) { out.className='msg err'; out.textContent='Enter a username and password.'; return; }
+    if (p.length < 6) { out.className='msg err'; out.textContent='Password must be at least 6 characters.'; return; }
+    btn.disabled = true; out.className='msg'; out.textContent = mode === 'signup' ? 'Creating…' : 'Signing in…';
+    const creds = { email: u + USER_DOMAIN, password: p };
+    const { error } = mode === 'signup'
+      ? await sb.auth.signUp(creds)
+      : await sb.auth.signInWithPassword(creds);
+    if (error) {
+      out.className = 'msg err';
+      out.textContent = /invalid login/i.test(error.message) ? 'Wrong username or password.' : error.message;
+      btn.disabled = false;
+    }
+    // success -> onAuthStateChange fires -> render()
+  };
+  P.addEventListener('keydown', e => { if (e.key === 'Enter') btn.click(); });
 }
 
 /* ── strikeout card (unchanged) ── */

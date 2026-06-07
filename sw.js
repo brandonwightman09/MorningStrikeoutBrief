@@ -1,7 +1,6 @@
-// Raya Brief — minimal app-shell service worker.
-// Caches the shell so the PWA installs and opens fast; brief DATA is always
-// fetched live from Supabase (network), never cached, so picks stay current.
-const SHELL = 'raya-shell-v1';
+// Raya Brief — app-shell service worker (network-first page so deploys auto-refresh).
+// Brief DATA is always fetched live from Supabase (network), never cached.
+const SHELL = 'raya-shell-v2';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -16,11 +15,21 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
-  // Never cache Supabase calls (auth + data) — always go to network.
-  if (url.hostname.endsWith('supabase.co')) return;
-  // App shell: cache-first, fall back to network.
-  e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request))
-  );
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.hostname.endsWith('supabase.co')) return;            // auth + data: always live
+  // Page/navigation: network-first so new deploys show on a normal refresh.
+  if (req.mode === 'navigate' || req.destination === 'document') {
+    e.respondWith(
+      fetch(req).then(res => {
+        const copy = res.clone();
+        caches.open(SHELL).then(c => c.put('./index.html', copy));
+        return res;
+      }).catch(() => caches.match('./index.html').then(h => h || caches.match('./')))
+    );
+    return;
+  }
+  // Static assets (icons, manifest): cache-first.
+  e.respondWith(caches.match(req).then(hit => hit || fetch(req)));
 });
