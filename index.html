@@ -121,6 +121,7 @@ const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
 
 let view = 'k';        // 'k' | 'tennis' | 'epl' | 'wc'
 let tstat = 'ace';     // 'ace' | 'df'
+let ttour = 'WTA';     // 'WTA' | 'ATP'
 let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
 
 // Friends sign in with a simple username + password. Supabase is email-based,
@@ -208,29 +209,20 @@ function kCard(p, i) {
     </div></div>`;
 }
 
-/* ── tennis card (new, same visual language) ── */
+/* ── tennis card (projection-only: Raya number, no market line) ── */
 function tennisCard(p, i) {
-  const sideOver = (p.bet_side || '').toLowerCase() === 'over';
   const unit = p.stat === 'df' ? 'DF' : 'ACES';
-  const sideProb = p.p_over == null ? null : (sideOver ? +p.p_over : 1 - +p.p_over);
-  const ppTile = `<div class="bct-tile bct-best"><span class="bct-ribbon">PrizePicks</span>
-    <div class="bct-tbk"><span class="bct-tdot bct-pp"></span>${esc((p.odds_type||'std').toUpperCase())}</div>
-    <div class="bct-trow"><span class="bct-tln">${fmtLine(p.pp_line)}</span></div></div>`;
-  const modelTile = `<div class="bct-tile">
-    <div class="bct-tbk"><span class="bct-tdot bct-dk"></span>Model${p.confidence?' · '+esc(p.confidence):''}</div>
-    <div class="bct-trow"><span class="bct-tln">${sideProb!=null?Math.round(sideProb*100)+'%':'--'}</span>
-      <span class="bct-tpx">${esc((p.bet_side||'').toUpperCase())}</span></div></div>`;
+  const surf = p.surface ? ` &middot; ${esc(String(p.surface).toUpperCase())}` : '';
   return `<div class="bct-card">
     <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
     <div class="bct-main">
       <div class="bct-name">${esc(p.player_name)}</div>
-      <div class="bct-match">${esc(p.event_name)} &middot; ${esc((p.surface||'').toUpperCase())}</div>
-      <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
-        <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
-        <span class="bct-ln">${fmtLine(p.pp_line)}</span>
-        <span class="bct-proj">PROJ <b>${p.raya_proj!=null?(+p.raya_proj).toFixed(2):'--'} ${unit}</b></span>
+      <div class="bct-match">${esc(p.event_name)}${surf}</div>
+      <div class="bct-bet" style="border-color:var(--acc-d);background:color-mix(in oklch,var(--acc) 9%,transparent)">
+        <span class="bct-side" style="color:var(--acc)">Proj</span>
+        <span class="bct-ln">${p.raya_proj!=null?(+p.raya_proj).toFixed(1):'--'}</span>
+        <span class="bct-proj">${unit} &middot; <b>Raya projection</b></span>
       </div>
-      <div class="bct-tiles">${ppTile}${modelTile}</div>
     </div></div>`;
 }
 
@@ -280,6 +272,10 @@ function wcCard(r, i) {
 function shell(metaTitle, metaSub, body, footL, footR) {
   const subtabs = view === 'tennis' ? `
     <div class="subtabs">
+      <div class="subtab ${ttour==='WTA'?'on':''}" data-tour="WTA">WTA</div>
+      <div class="subtab ${ttour==='ATP'?'on':''}" data-tour="ATP">ATP</div>
+    </div>
+    <div class="subtabs">
       <div class="subtab ${tstat==='ace'?'on':''}" data-stat="ace">Aces</div>
       <div class="subtab ${tstat==='df'?'on':''}" data-stat="df">Double Faults</div>
     </div>` : view === 'wc' ? `
@@ -305,7 +301,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <span>${footR} &middot; <a id="signout">Sign out</a></span></div>
   </div>`;
   app.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; render(); });
-  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (view === 'wc') { wstat = t.dataset.stat; } else { tstat = t.dataset.stat; } render(); });
+  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.tour) { ttour = t.dataset.tour; } else if (view === 'wc') { wstat = t.dataset.stat; } else { tstat = t.dataset.stat; } render(); });
   const so = document.getElementById('signout');
   if (so) so.onclick = async () => { await sb.auth.signOut(); route(); };
 }
@@ -324,16 +320,16 @@ async function render() {
           `${picks.length} Strikeout Calls`, 'Model <b>linreg_k_v1</b>');
   } else if (view === 'tennis') {
     const { data, error } = await sb.from('tennis_serve_brief').select('*')
-      .eq('stat', tstat).order('rank', { ascending: true });
+      .eq('stat', tstat).eq('tour', ttour).order('rank', { ascending: true });
     if (error) return shell('Tennis Serve Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
     const picks = data || [];
     const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
       { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
     const body = picks.length ? picks.map((p,idx)=>tennisCard(p,idx+1)).join('')
-                              : '<div class="bct-empty">No tennis picks posted yet.</div>';
-    const label = tstat === 'df' ? 'Double-Fault Calls' : 'Ace Calls';
-    shell('Tennis Serve Brief', `${dateLbl} &middot; PrizePicks Lines`, body,
-          `${picks.length} ${label}`, 'Model <b>wta_serve_v1</b>');
+                              : `<div class="bct-empty">No ${ttour} ${tstat==='df'?'double-fault':'ace'} projections posted yet.</div>`;
+    const label = tstat === 'df' ? 'Double-Fault Projections' : 'Ace Projections';
+    shell('Tennis Serve Brief', `${dateLbl} &middot; Raya Projections`, body,
+          `${ttour} &middot; ${picks.length} ${label}`, `Model <b>${ttour.toLowerCase()}_serve_v1</b>`);
   } else if (view === 'epl') {
     const { data, error } = await sb.from('soccer_shots_brief').select('*').order('rank', { ascending: true });
     if (error) return shell('EPL Shots Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
