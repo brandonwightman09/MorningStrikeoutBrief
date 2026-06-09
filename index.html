@@ -213,6 +213,7 @@ function kCard(p, i) {
 function tennisCard(p, i) {
   const unit = p.stat === 'df' ? 'DF' : 'ACES';
   const surf = p.surface ? ` &middot; ${esc(String(p.surface).toUpperCase())}` : '';
+  const conf = (p.confidence || '').toUpperCase();
   return `<div class="bct-card">
     <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
     <div class="bct-main">
@@ -221,7 +222,7 @@ function tennisCard(p, i) {
       <div class="bct-bet" style="border-color:var(--acc-d);background:color-mix(in oklch,var(--acc) 9%,transparent)">
         <span class="bct-side" style="color:var(--acc)">Proj</span>
         <span class="bct-ln">${p.raya_proj!=null?(+p.raya_proj).toFixed(1):'--'}</span>
-        <span class="bct-proj">${unit} &middot; <b>Raya projection</b></span>
+        <span class="bct-proj">${unit}${conf?` &middot; <b>${conf}</b>`:''}</span>
       </div>
     </div></div>`;
 }
