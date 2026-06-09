@@ -4,527 +4,373 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#16140f">
-<title>Raya HQ — Scoreboard</title>
+<title>Raya — Brief</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Raya HQ">
+<meta name="apple-mobile-web-app-title" content="Raya Brief">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Saira+Condensed:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-:root{
-  --bg:oklch(0.165 0.012 72);--card:oklch(0.205 0.013 74);--tile:oklch(0.150 0.011 72);
-  --ink:oklch(0.95 0.012 88);--mute:oklch(0.66 0.012 82);--faint:oklch(0.52 0.010 80);
-  --line:oklch(0.30 0.009 76);--acc:oklch(0.80 0.105 86);--acc-d:oklch(0.62 0.085 82);
-  --pos:oklch(0.76 0.10 152);--neg:oklch(0.72 0.13 34);
-}
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{background:oklch(0.12 0.008 72);}
-body{font-family:'Hanken Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;justify-content:center;}
-.scb{width:100%;max-width:446px;min-height:100vh;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;padding:max(26px,env(safe-area-inset-top)) 26px 22px;}
-.auth{margin:14vh auto 0;text-align:center;max-width:340px}
-.auth .mark{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:50px;letter-spacing:.04em;color:var(--ink);line-height:.9;text-transform:uppercase}
-.auth .mark i{font-style:normal;color:var(--acc)}
-.auth .tag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--mute);margin-top:8px}
-.auth p{color:var(--mute);font-size:14px;margin:22px 0 18px;line-height:1.5}
-.auth input{width:100%;background:var(--tile);border:1px solid var(--line);border-radius:10px;padding:13px 14px;color:var(--ink);font-size:15px;font-family:inherit;outline:none}
-.auth input:focus{border-color:var(--acc-d)}
-.auth input+input{margin-top:9px}
-.auth .switch{margin-top:15px;font-size:13px;color:var(--mute)}
-.auth .switch a{color:var(--acc-d);cursor:pointer;text-decoration:none;font-weight:600}
-.auth button{width:100%;margin-top:11px;background:var(--acc);color:var(--bg);border:none;border-radius:10px;padding:13px;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:16px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
-.auth button:disabled{opacity:.5;cursor:default}
-.auth .msg{margin-top:16px;font-size:13px;min-height:18px;line-height:1.45}
-.auth .msg.ok{color:var(--pos)}.auth .msg.err{color:var(--neg)}
-.loading{margin:auto;color:var(--mute);font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
-.scb-hdr{display:flex;align-items:center;gap:13px;padding-bottom:16px;margin-bottom:18px;border-bottom:2px solid var(--line);position:relative}
-.scb-hdr::after{content:'';position:absolute;left:0;bottom:-2px;width:84px;height:2px;background:var(--acc)}
-.scb-bars{display:flex;gap:3px;align-items:center}
-.scb-bars i{width:5px;height:26px;background:var(--acc);border-radius:1px;transform:skewX(-12deg)}
-.scb-bars i:nth-child(2){height:20px;opacity:.6}.scb-bars i:nth-child(3){height:14px;opacity:.35}
-.scb-logo{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:34px;letter-spacing:.04em;line-height:.9;text-transform:uppercase}
-.scb-logo i{font-style:normal;color:var(--acc)}
-.scb-meta{margin-left:auto;text-align:right;line-height:1.35}
-.scb-meta b{display:block;font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);white-space:nowrap;line-height:1.2}
-.scb-meta span{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
-/* ── tabs (added) ── */
-.tabs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
-.tab{flex:1 1 calc(50% - 4px);text-align:center;background:var(--tile);border:1px solid var(--line);border-radius:11px;padding:10px;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.07em;text-transform:uppercase;color:var(--mute);cursor:pointer}
-.tab.on{background:var(--acc);color:var(--bg);border-color:var(--acc)}
-.subtabs{display:flex;gap:7px;margin-bottom:14px}
-.subtab{flex:1;text-align:center;background:transparent;border:1px solid var(--line);border-radius:9px;padding:7px;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);cursor:pointer}
-.subtab.on{border-color:var(--acc-d);color:var(--acc)}
-.wc-grp{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--acc-d);padding:9px 0 5px;border-top:1px solid var(--line)}
-.wc-cume{display:grid;grid-template-columns:repeat(3,1fr);column-gap:12px;align-items:start;padding:11px 0 12px;border-top:1px solid var(--line)}
-.scb-through{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:16px;display:flex;align-items:center;gap:8px}
-.scb-through::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--acc);flex:0 0 auto}
-.scb-through b{color:var(--mute);font-weight:600}
-.scb-list{display:flex;flex-direction:column;gap:11px}
-.tier{display:grid;grid-template-columns:58px 1fr;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;position:relative}
-.tier-rail{background:linear-gradient(160deg,var(--card),var(--tile));position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;border-right:1px solid var(--line);gap:3px}
-.tier-rail::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--acc)}
-.tier-rail b{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.18em;color:var(--faint)}
-.tier-rail span{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:34px;line-height:.8;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
-.tier-rail span.two{font-size:26px}.tier-rail span.sum{font-size:34px;color:var(--acc)}
-.tier-body{padding:13px 15px 13px;min-width:0}
-.tier-head{display:flex;align-items:baseline;gap:9px;margin-bottom:11px}
-.tier-name{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:23px;line-height:.98;text-transform:uppercase;letter-spacing:.02em;white-space:nowrap;flex:0 0 auto}
-.tier-desc{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-left:auto}
-.cume{display:grid;grid-template-columns:1.05fr 1.2fr 1fr .75fr;column-gap:12px;align-items:start;padding:11px 0 12px;border-top:1px solid var(--line)}
-.stat{display:flex;flex-direction:column;gap:3px;min-width:0}
-.stat .lab{font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
-.stat .val{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:25px;line-height:.92;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:.005em;white-space:nowrap}
-.stat .val i{font-style:normal;font-size:15px;color:var(--mute);margin-left:1px}
-.val.pos{color:var(--pos)}.val.pos i{color:color-mix(in oklch,var(--pos) 70%,var(--mute))}
-.val.neg{color:var(--neg)}.val.neg i{color:color-mix(in oklch,var(--neg) 70%,var(--mute))}
-.val.mut{color:var(--mute)}
-.stat .be{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.04em;color:var(--faint)}
-.stat .be.clear{color:var(--pos)}.stat .be.short{color:var(--neg)}
-.stat .pend{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.04em;color:var(--faint)}
-.stat .pend.live{color:var(--acc-d)}
-.last{display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--line);font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--mute);letter-spacing:.02em;font-variant-numeric:tabular-nums;flex-wrap:wrap}
-.last .tag{font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:4px;padding:2px 6px}
-.last .sep{color:var(--line)}.last b{color:var(--ink);font-weight:600}
-.last .pos{color:var(--pos);font-weight:600}.last .neg{color:var(--neg);font-weight:600}
-.ledger{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:11px}
-.ledger-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
-.ledger-h b{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:16px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink)}
-.ledger-h span{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
-.lrow{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px}
-.lrow+.lrow{border-top:1px solid var(--line)}
-.lres{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
-.lres.win{background:var(--pos)}.lres.loss{background:var(--neg)}.lres.push{background:var(--faint)}.lres.pending{background:transparent;border:1px solid var(--faint)}
-.lname{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:15px;text-transform:uppercase;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ltag{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.08em;color:var(--acc-d);border:1px solid var(--line);border-radius:3px;padding:1px 4px;flex:0 0 auto}
-.lpick{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--mute);font-variant-numeric:tabular-nums;flex:0 0 auto;width:46px;text-align:right}
-.lk{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--faint);width:46px;text-align:right;flex:0 0 auto}
-.lu{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:15px;font-variant-numeric:tabular-nums;width:50px;text-align:right;flex:0 0 auto}
-.lu.pos{color:var(--pos)}.lu.neg{color:var(--neg)}.lu.flat{color:var(--faint)}
-.note{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--faint);line-height:1.5;margin:0 2px 11px;letter-spacing:.02em}
-.empty{background:var(--card);border:1px solid var(--line);border-radius:14px;color:var(--mute);text-align:center;padding:36px 22px;line-height:1.5}
-.empty b{color:var(--ink);font-family:'Saira Condensed',sans-serif;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;font-size:18px}
-.scb-foot{margin-top:18px;padding-top:13px;border-top:2px solid var(--line);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);line-height:1.7}
-.scb-foot b{color:var(--acc-d);font-weight:600}
-.scb-foot .row{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.scb-foot a{color:var(--faint);text-decoration:none;cursor:pointer}
-/* ── bankroll ── */
-.bankhero{background:linear-gradient(160deg,var(--card),var(--tile));border:1px solid var(--line);border-radius:16px;padding:18px 18px 15px;position:relative;overflow:hidden}
-.bankhero::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--acc)}
-.bankhero .blab{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
-.bankhero .big{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:46px;line-height:.9;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.01em;margin-top:4px}
-.bankhero .delta{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.03em;color:var(--mute);margin-top:6px}
-.bankhero .delta .pos{color:var(--pos);font-weight:600}.bankhero .delta .neg{color:var(--neg);font-weight:600}
-.bankhero .kelly{margin-top:13px;padding-top:11px;border-top:1px solid var(--line);display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
-.bankhero .kelly b{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:19px;color:var(--mute);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+  @import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Saira+Condensed:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:oklch(0.165 0.012 72);--card:oklch(0.205 0.013 74);--tile:oklch(0.150 0.011 72);
+    --ink:oklch(0.95 0.012 88);--mute:oklch(0.66 0.012 82);--faint:oklch(0.52 0.010 80);
+    --line:oklch(0.30 0.009 76);--acc:oklch(0.80 0.105 86);--acc-d:oklch(0.62 0.085 82);
+    --over:oklch(0.76 0.10 152);--under:oklch(0.72 0.13 34);
+  }
+  html,body{background:oklch(0.125 0.010 72);min-height:100%;-webkit-font-smoothing:antialiased}
+  body{display:flex;justify-content:center;padding:max(18px,env(safe-area-inset-top)) 14px 26px;
+    font-family:'Hanken Grotesk',system-ui,sans-serif;color:var(--ink)}
+  .wrap{width:446px;max-width:100%}
+
+  .auth{background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:40px 28px;text-align:center;margin-top:8vh}
+  .auth .mark{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:52px;letter-spacing:.05em;color:var(--acc);line-height:.9;text-transform:uppercase}
+  .auth .tag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--mute);margin-top:8px}
+  .auth p{color:var(--mute);font-size:14px;margin:22px 0 18px;line-height:1.5}
+  .auth input{width:100%;background:var(--tile);border:1px solid var(--line);border-radius:10px;
+    padding:13px 14px;color:var(--ink);font-size:15px;font-family:inherit;outline:none}
+  .auth input:focus{border-color:var(--acc-d)}
+  .auth button{width:100%;margin-top:11px;background:var(--acc);color:oklch(0.165 0.012 72);border:none;
+    border-radius:10px;padding:13px;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:16px;
+    letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+  .auth button:disabled{opacity:.5;cursor:default}
+  .auth input+input{margin-top:9px}
+  .auth .switch{margin-top:15px;font-size:13px;color:var(--mute)}
+  .auth .switch a{color:var(--acc-d);cursor:pointer;text-decoration:none;font-weight:600}
+  .auth .msg{margin-top:16px;font-size:13px;min-height:18px;line-height:1.45}
+  .auth .msg.ok{color:var(--over)}.auth .msg.err{color:var(--under)}
+
+  .bct{background:var(--bg);border-radius:16px;padding:26px 26px 22px;display:flex;flex-direction:column}
+  .bct-hdr{display:flex;align-items:center;gap:13px;padding-bottom:16px;margin-bottom:18px;border-bottom:2px solid var(--line);position:relative}
+  .bct-hdr::after{content:'';position:absolute;left:0;bottom:-2px;width:84px;height:2px;background:var(--acc)}
+  .bct-bars{display:flex;gap:3px;align-items:center}
+  .bct-bars i{width:5px;height:26px;background:var(--acc);border-radius:1px;transform:skewX(-12deg)}
+  .bct-bars i:nth-child(2){height:20px;opacity:.6}.bct-bars i:nth-child(3){height:14px;opacity:.35}
+  .bct-logo{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:38px;letter-spacing:.04em;line-height:.9;text-transform:uppercase}
+  .bct-meta{margin-left:auto;text-align:right;line-height:1.35}
+  .bct-meta b{display:block;font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:14px;letter-spacing:.1em;text-transform:uppercase}
+  .bct-meta span{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+
+  /* ── tabs (added) ─────────────────────────── */
+  .tabs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
+  .tab{flex:1 1 calc(50% - 4px);text-align:center;background:var(--tile);border:1px solid var(--line);border-radius:11px;padding:10px;
+    font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--mute);cursor:pointer}
+  .tab.on{background:var(--acc);color:oklch(0.165 0.012 72);border-color:var(--acc)}
+  .subtabs{display:flex;gap:7px;margin-bottom:13px}
+  .subtab{flex:1;text-align:center;background:transparent;border:1px solid var(--line);border-radius:9px;padding:7px;
+    font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);cursor:pointer}
+  .subtab.on{border-color:var(--acc-d);color:var(--acc)}
+
+  .bct-list{display:flex;flex-direction:column;gap:11px}
+  .bct-card{display:grid;grid-template-columns:58px 1fr;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;position:relative}
+  .bct-rail{background:linear-gradient(160deg,var(--card),var(--tile));position:relative;display:flex;align-items:center;justify-content:center;border-right:1px solid var(--line)}
+  .bct-rail::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--acc)}
+  .bct-rank{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:38px;line-height:.85;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .bct-rank b{display:block;font-size:8px;font-weight:700;letter-spacing:.18em;color:var(--faint);text-align:center;margin-bottom:3px}
+  .bct-main{padding:13px 15px 14px;min-width:0}
+  .bct-name{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:25px;line-height:.98;text-transform:uppercase;letter-spacing:.01em}
+  .bct-match{font-family:'Saira Condensed',sans-serif;font-weight:500;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;margin-top:1px}
+  .bct-bet{display:flex;align-items:center;margin:11px 0 12px;padding:7px 12px;border-radius:8px;border-left:4px solid}
+  .bct-bet.bct-over{background:color-mix(in oklch,var(--over) 12%,transparent);border-color:var(--over)}
+  .bct-bet.bct-under{background:color-mix(in oklch,var(--under) 12%,transparent);border-color:var(--under)}
+  .bct-bet .bct-side{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:19px;text-transform:uppercase;letter-spacing:.03em}
+  .bct-over .bct-side{color:var(--over)}.bct-under .bct-side{color:var(--under)}
+  .bct-bet .bct-ln{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:19px;margin-left:11px}
+  .bct-bet .bct-proj{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--mute);font-variant-numeric:tabular-nums}
+  .bct-bet .bct-proj b{color:var(--ink);font-weight:600}
+  .bct-tiles{display:flex;gap:9px}
+  .bct-tile{flex:1;background:var(--tile);border:1px solid var(--line);border-radius:10px;padding:9px 11px 10px;position:relative;overflow:hidden}
+  .bct-tile.bct-best{border-color:var(--acc-d)}.bct-tile.bct-off{opacity:.45}
+  .bct-tbk{display:flex;align-items:center;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;color:var(--mute);text-transform:uppercase}
+  .bct-tdot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;margin-right:6px}
+  .bct-tdot.bct-dk{background:oklch(0.74 0.16 150)}.bct-tdot.bct-fd{background:oklch(0.66 0.16 250)}
+  .bct-tdot.bct-pp{background:var(--acc)}
+  .bct-trow{display:flex;align-items:baseline;margin-top:5px}
+  .bct-tln{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:24px;line-height:.9;font-variant-numeric:tabular-nums}
+  .bct-tpx{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--acc);font-variant-numeric:tabular-nums;margin-left:9px}
+  .bct-tpx.bct-na{color:var(--faint)}
+  .bct-ribbon{position:absolute;top:0;right:0;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--bg);background:var(--acc);padding:2px 8px;border-bottom-left-radius:8px}
+  .bct-foot{display:flex;align-items:center;justify-content:space-between;margin-top:18px;padding-top:13px;border-top:2px solid var(--line);font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+  .bct-foot b{color:var(--acc-d);font-weight:600}
+  .bct-foot a{color:var(--faint);text-decoration:none;cursor:pointer}
+  .bct-empty{color:var(--mute);text-align:center;padding:40px 20px;font-family:'Saira Condensed',sans-serif;text-transform:uppercase;letter-spacing:.08em}
+  .wc-note{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:11px;
+    font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.65;color:var(--mute);letter-spacing:.01em}
+  .loading{text-align:center;padding:60px 20px;color:var(--mute);font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
 </style>
 </head>
 <body>
-<main class="scb" id="app"><div class="loading">Loading…</div></main>
+<div class="wrap" id="app">
+  <div class="loading">Loading…</div>
+</div>
+
 <script type="module">
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
 const SUPABASE_URL  = 'https://zuijmbyrwzixnhcaqgpl.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_64yRp9qL6lES2TGOItXeEg_UFtWQfJ2';
-const OWNER_EMAIL = 'brandonwightman09@gmail.com';
-const BREAKEVEN = 52.4;
+
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const app = document.getElementById('app');
+
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const u2 = x => (x>=0?'+':'\u2212') + Math.abs(Math.round(x*100)/100).toFixed(2);
-const cls = x => x>0?'pos':x<0?'neg':'mut';
-const dash = '\u2013';
-const fmtUTC = ts => { const d=new Date(ts); return isNaN(d)?String(ts):`${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')} ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')} UTC`; };
-const fmtDay = s => { const d=new Date(String(s)+'T00:00:00Z'); return isNaN(d)?String(s):d.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'}); };
+const fmtLine = x => (x == null ? '' : (+x).toString());
+const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
 
-let view = 'k';      // 'k' | 'tennis' | 'epl' | 'wc' | 'bank'
-let tstat = 'ace';   // 'ace' | 'df'
-let wstat = 'Shots'; // 'Shots' | 'Shots On Target'
+let view = 'k';        // 'k' | 'tennis' | 'epl' | 'wc'
+let tstat = 'ace';     // 'ace' | 'df'
+let ttour = 'WTA';     // 'WTA' | 'ATP'
+let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
 
-function authScreen(msg, c){
-  app.innerHTML = `<div class="auth">
-    <div class="mark">Raya <i>HQ</i></div>
-    <div class="tag">Grading Scoreboard \u00b7 Private</div>
-    <p id="sub">Sign in with your owner email and password.</p>
-    <input id="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" placeholder="email" />
-    <input id="pass" type="password" autocomplete="current-password" placeholder="password" />
-    <button id="go">Sign in</button>
-    <div class="switch"><a id="toggle">First time? Set up owner account</a></div>
-    <div class="msg ${c||''}" id="msg">${msg||''}</div></div>`;
-  const email=document.getElementById('email'), pass=document.getElementById('pass'),
-        btn=document.getElementById('go'), out=document.getElementById('msg'),
-        tog=document.getElementById('toggle'), sub=document.getElementById('sub');
-  let mode='signin';
-  tog.onclick=()=>{
-    mode = mode==='signin' ? 'signup' : 'signin';
-    btn.textContent = mode==='signin' ? 'Sign in' : 'Create account';
-    tog.textContent = mode==='signin' ? 'First time? Set up owner account' : 'Back to sign in';
-    sub.textContent = mode==='signin' ? 'Sign in with your owner email and password.'
-                                      : 'Set a password for your owner email.';
-    out.textContent=''; out.className='msg';
+// Friends sign in with a simple username + password. Supabase is email-based,
+// so the username is mapped to <username>@raya-hq.com under the hood — no real
+// email is needed or sent (requires "Confirm email" OFF in Supabase Auth).
+const USER_DOMAIN = '@raya-hq.com';
+function authScreen(msg, cls) {
+  app.innerHTML = `
+    <div class="auth">
+      <div class="mark">Raya</div>
+      <div class="tag">Daily Brief</div>
+      <p id="sub">Sign in with your username and password.</p>
+      <input id="user" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="username" />
+      <input id="pass" type="password" autocomplete="current-password" placeholder="password" />
+      <button id="go">Sign in</button>
+      <div class="switch">New here? <a id="toggle">Create an account</a></div>
+      <div class="msg ${cls||''}" id="msg">${msg||''}</div>
+    </div>`;
+  const U = document.getElementById('user');
+  const P = document.getElementById('pass');
+  const btn = document.getElementById('go');
+  const out = document.getElementById('msg');
+  const tog = document.getElementById('toggle');
+  const sub = document.getElementById('sub');
+  let mode = 'signin';
+  tog.onclick = () => {
+    mode = mode === 'signin' ? 'signup' : 'signin';
+    btn.textContent = mode === 'signin' ? 'Sign in' : 'Create account';
+    tog.textContent = mode === 'signin' ? 'Create an account' : 'Have an account? Sign in';
+    sub.textContent = mode === 'signin'
+      ? 'Sign in with your username and password.'
+      : 'Pick a username and password to create your account.';
+    out.textContent = ''; out.className = 'msg';
   };
-  btn.onclick=async()=>{
-    const a=email.value.trim(), p=pass.value;
-    if(!a||!a.includes('@')){out.className='msg err';out.textContent='Enter a valid email.';return;}
-    if(!p||p.length<6){out.className='msg err';out.textContent='Password must be at least 6 characters.';return;}
-    btn.disabled=true;out.className='msg';out.textContent = mode==='signup'?'Creating\u2026':'Signing in\u2026';
-    const {error} = mode==='signup'
-      ? await sb.auth.signUp({email:a,password:p})
-      : await sb.auth.signInWithPassword({email:a,password:p});
-    if(error){
-      out.className='msg err';
-      out.textContent = /invalid login/i.test(error.message) ? 'Wrong email or password.' : error.message;
-      btn.disabled=false;
+  btn.onclick = async () => {
+    const u = U.value.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+    const p = P.value;
+    if (!u || !p) { out.className='msg err'; out.textContent='Enter a username and password.'; return; }
+    if (p.length < 6) { out.className='msg err'; out.textContent='Password must be at least 6 characters.'; return; }
+    btn.disabled = true; out.className='msg'; out.textContent = mode === 'signup' ? 'Creating…' : 'Signing in…';
+    const creds = { email: u + USER_DOMAIN, password: p };
+    const { error } = mode === 'signup'
+      ? await sb.auth.signUp(creds)
+      : await sb.auth.signInWithPassword(creds);
+    if (error) {
+      out.className = 'msg err';
+      out.textContent = /invalid login/i.test(error.message) ? 'Wrong username or password.' : error.message;
+      btn.disabled = false;
     }
-    // success -> onAuthStateChange -> board()
+    // success -> onAuthStateChange fires -> render()
   };
-  pass.addEventListener('keydown',e=>{if(e.key==='Enter')btn.click();});
+  P.addEventListener('keydown', e => { if (e.key === 'Enter') btn.click(); });
 }
-function statsFor(rows){
-  const g=rows.filter(r=>r.result==='win'||r.result==='loss'||r.result==='push');
-  const w=g.filter(r=>r.result==='win').length, l=g.filter(r=>r.result==='loss').length, p=g.filter(r=>r.result==='push').length;
-  const units=g.reduce((s,r)=>s+(+r.profit_units||0),0);
-  const pending=rows.filter(r=>!r.result).length;
-  const hit=(w+l)?100*w/(w+l):null;
-  return {w,l,p,units,pending,hit,graded:g.length};
-}
-function tierEl(railHTML, name, desc, rows, lastDay){
-  const c=statsFor(rows);
-  const n=lastDay?statsFor(rows.filter(r=>r.slate_date===lastDay)):null;
-  const rec = c.graded ? `${c.w}${dash}${c.l}${c.p?`${dash}${c.p}p`:''}` : `0${dash}0`;
-  const hitVal = c.hit==null ? `<span class="val mut">${dash}</span>`
-    : `<span class="val ${c.hit>=BREAKEVEN?'pos':'neg'}">${c.hit.toFixed(1)}<i>%</i></span>`;
-  const beCls = c.hit==null ? '' : (c.hit>=BREAKEVEN?'clear':'short');
-  const netVal = c.graded ? `<span class="val ${cls(c.units)}">${u2(c.units)}<i>u</i></span>` : `<span class="val mut">${dash}</span>`;
-  const pendCls = c.pending ? 'live' : '';
-  const pendLab = c.pending ? 'awaiting' : 'graded';
-  const lastHTML = (n && n.graded) ? `<div class="last"><span class="tag">Last night</span>
-      <b>${n.w}${dash}${n.l}</b><span class="sep">\u00b7</span>${n.hit!=null?n.hit.toFixed(1)+'% hit':'\u2014'}<span class="sep">\u00b7</span>
-      <span class="${cls(n.units)==='mut'?'':cls(n.units)}">${u2(n.units)}u</span></div>` : '';
-  return `<section class="tier">
-    <div class="tier-rail">${railHTML}</div>
-    <div class="tier-body">
-      <div class="tier-head"><div class="tier-name">${name}</div><div class="tier-desc">${desc}</div></div>
-      <div class="cume">
-        <div class="stat"><span class="lab">Record</span><span class="val">${rec}</span></div>
-        <div class="stat"><span class="lab">Hit&nbsp;%</span>${hitVal}<span class="be ${beCls}">need ${BREAKEVEN}%</span></div>
-        <div class="stat"><span class="lab">Net</span>${netVal}</div>
-        <div class="stat"><span class="lab">Pending</span><span class="val mut">${c.pending}</span><span class="pend ${pendCls}">${pendLab}</span></div>
+
+/* ── strikeout card (unchanged) ── */
+function kCard(p, i) {
+  const differ = p.dk_line != null && p.fd_line != null && (+p.dk_line) !== (+p.fd_line);
+  const sideOver = (p.bet_side || '').toLowerCase() === 'over';
+  const tile = (bk, label, dot, ln, px) => {
+    if (ln == null) return '';
+    const best = p.best_book === bk;
+    const off  = differ && !best;
+    const cls  = 'bct-tile' + (best ? ' bct-best' : '') + (off ? ' bct-off' : '');
+    const ribbon = best ? '<span class="bct-ribbon">Raya Bet</span>' : '';
+    const price = off ? '<span class="bct-tpx bct-na">off line</span>'
+                      : `<span class="bct-tpx">${fmtOdds(px)}</span>`;
+    return `<div class="${cls}">${ribbon}
+      <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${label}</div>
+      <div class="bct-trow"><span class="bct-tln">${fmtLine(ln)}</span>${price}</div></div>`;
+  };
+  return `<div class="bct-card">
+    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
+    <div class="bct-main">
+      <div class="bct-name">${esc(p.pitcher_name)}</div>
+      <div class="bct-match">${esc(p.event_name)}</div>
+      <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
+        <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
+        <span class="bct-ln">${fmtLine(p.book_line)}</span>
+        <span class="bct-proj">PROJ <b>${p.raya_projected_k!=null?(+p.raya_projected_k).toFixed(2):'--'} K</b></span>
       </div>
-      ${lastHTML}
-    </div></section>`;
+      <div class="bct-tiles">
+        ${tile('draftkings','DraftKings','bct-dk',p.dk_line,p.dk_price)}
+        ${tile('fanduel','FanDuel','bct-fd',p.fd_line,p.fd_price)}
+      </div>
+    </div></div>`;
 }
-function ledger(rows, opt){
-  opt = opt || {nameKey:'pitcher_name', actKey:'actual_k', actUnit:'K', lineKey:'anchor_line'};
-  const sorted=[...rows].sort((a,b)=>(b.slate_date||'').localeCompare(a.slate_date||'')||(a.tier_rank||99)-(b.tier_rank||99));
-  const show=sorted.slice(0,20);
-  if(!show.length) return '';
-  const row=r=>{
-    const res=r.result||'pending';
-    const tag=r.in_top5?'T5':r.in_top10?'T10':'\u00b7';
-    const side=(r.bet_side||'').charAt(0).toUpperCase();
-    const av=r[opt.actKey];
-    const k=av==null?`<span class="lk">${dash} ${opt.actUnit}</span>`:`<span class="lk">${av} ${opt.actUnit}</span>`;
-    const u=r.profit_units==null?`<span class="lu flat">\u00b7</span>`:`<span class="lu ${cls(+r.profit_units)==='mut'?'flat':cls(+r.profit_units)}">${u2(+r.profit_units)}</span>`;
-    return `<div class="lrow"><span class="lres ${res}"></span><span class="lname">${esc(r[opt.nameKey])}</span>
-      <span class="ltag">${tag}</span><span class="lpick">${side}${r[opt.lineKey]}</span>${k}${u}</div>`;
-  };
-  return `<div class="ledger"><div class="ledger-h"><b>Recent Results</b><span>last ${show.length}</span></div>${show.map(row).join('')}</div>`;
+
+/* ── tennis card (projection-only: Raya number, no market line) ── */
+function tennisCard(p, i) {
+  const unit = p.stat === 'df' ? 'DF' : 'ACES';
+  const surf = p.surface ? ` &middot; ${esc(String(p.surface).toUpperCase())}` : '';
+  const conf = (p.confidence || '').toUpperCase();
+  return `<div class="bct-card">
+    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
+    <div class="bct-main">
+      <div class="bct-name">${esc(p.player_name)}</div>
+      <div class="bct-match">${esc(p.event_name)}${surf}</div>
+      <div class="bct-bet" style="border-color:var(--acc-d);background:color-mix(in oklch,var(--acc) 9%,transparent)">
+        <span class="bct-side" style="color:var(--acc)">Proj</span>
+        <span class="bct-ln">${p.raya_proj!=null?(+p.raya_proj).toFixed(1):'--'}</span>
+        <span class="bct-proj">${unit}${conf?` &middot; <b>${conf}</b>`:''}</span>
+      </div>
+    </div></div>`;
 }
-function shellHTML(metaTitle, metaSub, through, mid, footHTML, throughLabel){
-  throughLabel = throughLabel || 'Results current through';
-  const subtabs = view==='tennis' ? `<div class="subtabs">
+
+/* ── EPL shots card (PrizePicks-shaped, mirrors tennis) ── */
+function soccerCard(p, i) {
+  const sideOver = (p.bet_side || '').toLowerCase() === 'over';
+  const unit = ({shots:'SH','shots on target':'SOT',sot:'SOT',key_passes:'KP',kp:'KP'})[(p.stat||'').toLowerCase()] || (p.stat ? p.stat.toUpperCase() : 'SH');
+  const sideProb = p.p_over == null ? null : (sideOver ? +p.p_over : 1 - +p.p_over);
+  const ha = (p.home_away||'').toUpperCase();
+  const ppTile = `<div class="bct-tile bct-best"><span class="bct-ribbon">PrizePicks</span>
+    <div class="bct-tbk"><span class="bct-tdot bct-pp"></span>${esc((p.odds_type||'std').toUpperCase())}</div>
+    <div class="bct-trow"><span class="bct-tln">${fmtLine(p.line)}</span></div></div>`;
+  const modelTile = `<div class="bct-tile">
+    <div class="bct-tbk"><span class="bct-tdot bct-dk"></span>Model${p.confidence?' &middot; '+esc(p.confidence):''}</div>
+    <div class="bct-trow"><span class="bct-tln">${sideProb!=null?Math.round(sideProb*100)+'%':'--'}</span>
+      <span class="bct-tpx">${esc((p.bet_side||'').toUpperCase())}</span></div></div>`;
+  return `<div class="bct-card">
+    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
+    <div class="bct-main">
+      <div class="bct-name">${esc(p.player_name)}</div>
+      <div class="bct-match">${esc(p.team||'')} vs ${esc(p.opponent||'')}${ha?' &middot; '+ha:''}</div>
+      <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
+        <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
+        <span class="bct-ln">${fmtLine(p.line)}</span>
+        <span class="bct-proj">PROJ <b>${p.raya_proj!=null?(+p.raya_proj).toFixed(2):'--'} ${unit}</b></span>
+      </div>
+      <div class="bct-tiles">${ppTile}${modelTile}</div>
+    </div></div>`;
+}
+
+/* ── World Cup watch card (tracked line, NOT a call) ── */
+function wcCard(r, i) {
+  const tag = wstat === 'Shots' ? 'SH' : 'SOT';
+  return `<div class="bct-card">
+    <div class="bct-rail"><div class="bct-rank" style="font-size:20px"><b>WC</b>${String(i).padStart(2,'0')}</div></div>
+    <div class="bct-main">
+      <div class="bct-name">${esc(r.player)}</div>
+      <div class="bct-match">${esc(r.team||'')} vs ${esc(r.opponent||'')}</div>
+      <div class="bct-bet" style="border-color:var(--acc-d);background:color-mix(in oklch,var(--acc) 9%,transparent)">
+        <span class="bct-side" style="color:var(--acc)">Watch</span>
+        <span class="bct-ln">${fmtLine(r.line)}</span>
+        <span class="bct-proj">${tag} &middot; <b>CLV-tracked</b></span>
+      </div>
+    </div></div>`;
+}
+
+function shell(metaTitle, metaSub, body, footL, footR) {
+  const subtabs = view === 'tennis' ? `
+    <div class="subtabs">
+      <div class="subtab ${ttour==='WTA'?'on':''}" data-tour="WTA">WTA</div>
+      <div class="subtab ${ttour==='ATP'?'on':''}" data-tour="ATP">ATP</div>
+    </div>
+    <div class="subtabs">
       <div class="subtab ${tstat==='ace'?'on':''}" data-stat="ace">Aces</div>
-      <div class="subtab ${tstat==='df'?'on':''}" data-stat="df">Double Faults</div></div>`
-    : view==='wc' ? `<div class="subtabs">
+      <div class="subtab ${tstat==='df'?'on':''}" data-stat="df">Double Faults</div>
+    </div>` : view === 'wc' ? `
+    <div class="subtabs">
       <div class="subtab ${wstat==='Shots'?'on':''}" data-stat="Shots">Shots</div>
-      <div class="subtab ${wstat==='Shots On Target'?'on':''}" data-stat="Shots On Target">On Target</div></div>` : '';
-  return `<header class="scb-hdr">
-      <div class="scb-bars"><i></i><i></i><i></i></div>
-      <div class="scb-logo">Raya <i>HQ</i></div>
-      <div class="scb-meta"><b>${metaTitle}</b><span>${metaSub}</span></div>
-    </header>
+      <div class="subtab ${wstat==='Shots On Target'?'on':''}" data-stat="Shots On Target">On Target</div>
+    </div>` : '';
+  app.innerHTML = `<div class="bct">
+    <div class="bct-hdr">
+      <div class="bct-bars"><i></i><i></i><i></i></div>
+      <div class="bct-logo">Raya</div>
+      <div class="bct-meta"><b>${metaTitle}</b><span>${metaSub}</span></div>
+    </div>
     <div class="tabs">
       <div class="tab ${view==='k'?'on':''}" data-view="k">Strikeout</div>
       <div class="tab ${view==='tennis'?'on':''}" data-view="tennis">Tennis</div>
       <div class="tab ${view==='epl'?'on':''}" data-view="epl">EPL Shots</div>
       <div class="tab ${view==='wc'?'on':''}" data-view="wc">World Cup</div>
-      <div class="tab ${view==='bank'?'on':''}" data-view="bank">Bankroll</div>
     </div>
     ${subtabs}
-    <div class="scb-through">${throughLabel} <b>${esc(through)}</b></div>
-    ${mid}
-    <footer class="scb-foot">${footHTML}</footer>`;
-}
-function wire(){
-  app.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ view=t.dataset.view; board(); });
-  app.querySelectorAll('.subtab').forEach(t=>t.onclick=()=>{ if(view==='wc'){ wstat=t.dataset.stat; } else { tstat=t.dataset.stat; } board(); });
-  const so=document.getElementById('signout'); if(so) so.onclick=async()=>{await sb.auth.signOut();route();};
-}
-async function board(){
-  app.innerHTML=`<div class="loading">Loading scoreboard\u2026</div>`;
-  const {data:{session}}=await sb.auth.getSession();
-  if(session && session.user.email!==OWNER_EMAIL){ await sb.auth.signOut(); authScreen('That account isn\u2019t the owner. This app is private.','err'); return; }
-
-  if(view==='k'){
-    const {data,error}=await sb.from('mlb_k_brief_log').select('*');
-    if(error){ app.innerHTML=`<main class="scb"><div class="empty"><b>Couldn\u2019t load</b>${esc(error.message)}</div></main>`; return; }
-    const rows=data||[];
-    const graded=rows.filter(r=>r.result);
-    const lastDay=graded.length?graded.map(r=>r.slate_date).sort().slice(-1)[0]:null;
-    const through=lastDay||'no results yet';
-    const tiers=`<div class="scb-list">
-      ${tierEl('<b>TOP</b><span>5</span>','Top 5','Morning brief',rows.filter(r=>r.in_top5),lastDay)}
-      ${tierEl('<b>TOP</b><span class="two">10</span>','Top 10','Next 5 ranked',rows.filter(r=>r.in_top10),lastDay)}
-      ${tierEl('<b>ALL</b><span class="sum">\u03A3</span>','Overall','Every qualifying pick',rows,lastDay)}</div>`;
-    let mid;
-    if(!rows.length) mid=`<div class="empty"><b>No picks logged yet</b>The morning brief begins logging on its next run. Once games settle, the scoreboard fills in here.</div>`;
-    else if(!graded.length) mid=`<div class="note">${rows.length} picks logged \u00b7 0 graded \u2014 records appear once the grader settles them against actual strikeouts.</div>${tiers}${ledger(rows)}`;
-    else mid=`${tiers}${ledger(rows)}`;
-    const foot=`<div class="row"><span>Net units \u00b7 flat 1u \u00b7 best-book price</span><span>Model <b>linreg_k_v1</b></span></div>
-      <div class="row"><span>Breakeven <b>${BREAKEVEN}%</b> at \u2212110 juice</span><span><a id="signout">Sign out</a></span></div>`;
-    app.innerHTML=shellHTML('Evening Scoreboard','Strikeout Grading',through,mid,foot);
-    wire(); return;
-  }
-
-  // ── tennis ──
-  if(view==='tennis'){
-    const {data,error}=await sb.from('tennis_serve_brief_log').select('*').eq('stat',tstat);
-    if(error){ app.innerHTML=`<main class="scb"><div class="empty"><b>Couldn\u2019t load</b>${esc(error.message)}</div></main>`; return; }
-    const rows=data||[];
-    const graded=rows.filter(r=>r.result);
-    const lastDay=graded.length?graded.map(r=>r.slate_date).sort().slice(-1)[0]:null;
-    const through=lastDay||'no results yet';
-    const statLab = tstat==='df' ? 'double-fault' : 'ace';
-    const lopt={nameKey:'player_name', actKey:'actual', actUnit:(tstat==='df'?'DF':'A'), lineKey:'pp_line'};
-    const tiers=`<div class="scb-list">
-      ${tierEl('<b>TOP</b><span>5</span>','Top 5','Serve brief',rows.filter(r=>r.in_top5),lastDay)}
-      ${tierEl('<b>TOP</b><span class="two">10</span>','Top 10','Next 5 ranked',rows.filter(r=>r.in_top10),lastDay)}
-      ${tierEl('<b>ALL</b><span class="sum">\u03A3</span>','Overall','Every qualifying pick',rows,lastDay)}</div>`;
-    let mid;
-    if(!rows.length) mid=`<div class="empty"><b>No ${statLab} picks logged yet</b>The tennis brief logs on its next capture. Records fill in once matches settle.</div>`;
-    else if(!graded.length) mid=`<div class="note">${rows.length} ${statLab} picks logged \u00b7 0 graded \u2014 results appear once actuals settle (Sackmann / SofaScore feed).</div>${tiers}${ledger(rows,lopt)}`;
-    else mid=`${tiers}${ledger(rows,lopt)}`;
-    const foot=`<div class="row"><span>Net units \u00b7 PrizePicks pick\u2019em</span><span>Model <b>wta_serve_v1</b></span></div>
-      <div class="row"><span>${statLab.toUpperCase()} props \u00b7 grading pending</span><span><a id="signout">Sign out</a></span></div>`;
-    app.innerHTML=shellHTML('Evening Scoreboard',(tstat==='df'?'Double-Fault':'Ace')+' Grading',through,mid,foot);
-    wire(); return;
-  }
-
-  // ── EPL shots ──
-  if(view==='epl'){
-    const {data,error}=await sb.from('soccer_shots_brief_log').select('*');
-    if(error){ app.innerHTML=`<main class="scb"><div class="empty"><b>Couldn\u2019t load</b>${esc(error.message)}</div></main>`; return; }
-    const rows=data||[];
-    const graded=rows.filter(r=>r.result);
-    const lastDay=graded.length?graded.map(r=>r.slate_date).sort().slice(-1)[0]:null;
-    const through=lastDay||'no results yet';
-    const lopt={nameKey:'player_name', actKey:'actual', actUnit:'SH', lineKey:'line'};
-    const tiers=`<div class="scb-list">
-      ${tierEl('<b>TOP</b><span>5</span>','Top 5','Shots brief',rows.filter(r=>r.in_top5),lastDay)}
-      ${tierEl('<b>TOP</b><span class="two">10</span>','Top 10','Next 5 ranked',rows.filter(r=>r.in_top10),lastDay)}
-      ${tierEl('<b>ALL</b><span class="sum">\u03A3</span>','Overall','Every qualifying pick',rows,lastDay)}</div>`;
-    let mid;
-    if(!rows.length) mid=`<div class="empty"><b>No EPL picks logged yet</b>The shots brief resumes when the league season returns. Records fill in here once matches settle.</div>`;
-    else if(!graded.length) mid=`<div class="note">${rows.length} picks logged \u00b7 0 graded \u2014 records appear once the grader settles them against actual shots.</div>${tiers}${ledger(rows,lopt)}`;
-    else mid=`${tiers}${ledger(rows,lopt)}`;
-    const foot=`<div class="row"><span>Net units \u00b7 flat 1u \u00b7 PrizePicks line</span><span>EPL <b>shots brief</b></span></div>
-      <div class="row"><span>Breakeven ${BREAKEVEN}% at \u2212110 juice</span><span><a id="signout">Sign out</a></span></div>`;
-    app.innerHTML=shellHTML('Evening Scoreboard','EPL Shots Grading',through,mid,foot);
-    wire(); return;
-  }
-
-  // ── World Cup (CLV tracker, real captures only) ──
-  if(view==='wc'){
-    let totalSnaps=0, latest=[], trades=[];
-    try{
-      const cnt=await sb.from('intl_shots_line_snapshots').select('*',{count:'exact',head:true});
-      totalSnaps=cnt.count||0;
-      const lq=await sb.from('intl_shots_line_snapshots').select('*').eq('odds_type','standard').order('captured_at',{ascending:false}).limit(400);
-      if(lq.error) throw lq.error;
-      latest=lq.data||[];
-      const tq=await sb.from('intl_shots_paper_trades').select('*');
-      trades=tq.data||[];
-    }catch(err){
-      app.innerHTML=shellHTML('Line Capture','World Cup CLV',dash,`<div class="empty"><b>Couldn\u2019t load</b>${esc(err.message||String(err))}</div>`,wcFoot(),'Lines captured through');
-      wire(); return;
-    }
-    const latestTs = latest.length ? latest[0].captured_at : null;
-    const boardRows = latest.filter(r=>r.captured_at===latestTs);
-    const wrows = boardRows.filter(r=>r.stat_type===wstat);
-    const capLab = latestTs ? fmtUTC(latestTs) : 'no capture yet';
-    const players = new Set(boardRows.map(r=>r.player)).size;
-    const matches = new Set(boardRows.map(r=>`${r.team}|${r.opponent}`)).size;
-    const tag = wstat==='Shots' ? 'SH' : 'SOT';
-    const statusCard=`<section class="tier">
-      <div class="tier-rail"><b>WC</b><span class="sum">\u03A3</span></div>
-      <div class="tier-body">
-        <div class="tier-head"><div class="tier-name">Capture</div><div class="tier-desc">Harness live \u00b7 twice daily</div></div>
-        <div class="wc-cume">
-          <div class="stat"><span class="lab">Line&nbsp;obs</span><span class="val">${totalSnaps.toLocaleString()}</span></div>
-          <div class="stat"><span class="lab">Players</span><span class="val">${players}</span></div>
-          <div class="stat"><span class="lab">Matches</span><span class="val">${matches}</span></div>
-        </div>
-      </div></section>`;
-    let boardHTML;
-    if(!wrows.length){
-      boardHTML=`<div class="empty"><b>No standard ${tag} lines yet</b>PrizePicks posts standard ${esc(wstat)} lines closer to kickoff. Specials (demon/goblin) are captured but not graded.</div>`;
-    } else {
-      const groups={};
-      wrows.forEach(r=>{ const k=`${r.team} vs ${r.opponent}`; (groups[k]=groups[k]||[]).push(r); });
-      const grp=Object.entries(groups).map(([m,rs])=>{
-        const md=rs[0].match_date?fmtDay(rs[0].match_date):'';
-        const lines=rs.slice().sort((a,b)=>(+b.line)-(+a.line)).map(r=>
-          `<div class="lrow"><span class="lres pending"></span><span class="lname">${esc(r.player)}</span>
-            <span class="ltag">${tag}</span><span class="lpick">${r.line}</span></div>`).join('');
-        return `<div class="wc-grp">${esc(m)}${md?` \u00b7 ${md}`:''}</div>${lines}`;
-      }).join('');
-      boardHTML=`<div class="ledger"><div class="ledger-h"><b>Lines Tracking</b><span>standard \u00b7 latest pull</span></div>${grp}</div>`;
-    }
-    const gradedTrades=trades.filter(t=>t.clv!=null);
-    let clvHTML;
-    if(!gradedTrades.length){
-      clvHTML=`<div class="empty"><b>CLV grades pending</b>Opening lines are logging now, snapshotted twice daily. After the Jun 11 openers, once lines move open\u2192close, closing-line value is bucketed here by gap band.</div>`;
-    } else {
-      const bands={};
-      gradedTrades.forEach(t=>{ const b=t.gap_band||'?'; (bands[b]=bands[b]||[]).push(t); });
-      const order=['0-0.5','0.5-1','1-1.5','1.5-2','2+'];
-      const brows=Object.entries(bands).sort((a,b)=>order.indexOf(a[0])-order.indexOf(b[0])).map(([b,ts])=>{
-        const avg=ts.reduce((s,t)=>s+(+t.clv||0),0)/ts.length;
-        const tw=100*ts.filter(t=>t.clv_toward_us).length/ts.length;
-        return `<div class="lrow"><span class="lres ${avg>0?'win':avg<0?'loss':'push'}"></span><span class="lname">${esc(b)}</span>
-          <span class="ltag">${ts.length}</span><span class="lpick">${tw.toFixed(0)}%</span><span class="lu ${cls(avg)==='mut'?'flat':cls(avg)}">${u2(avg)}</span></div>`;
-      }).join('');
-      clvHTML=`<div class="ledger"><div class="ledger-h"><b>CLV by Gap Band</b><span>avg move \u00b7 toward us</span></div>${brows}</div>`;
-    }
-    const note=`<div class="note">World Cup is a CLV-tracking board \u2014 not a pick board. The shots model doesn\u2019t beat the market prior, so this tracks whether PrizePicks lines drift our way (open\u2192close), graded after Jun 11. Specials captured; standard lines graded.</div>`;
-    const mid=`${note}<div class="scb-list">${statusCard}</div>${boardHTML}${clvHTML}`;
-    app.innerHTML=shellHTML('Line Capture','World Cup CLV',capLab,mid,wcFoot(),'Lines captured through');
-    wire(); return;
-  }
-
-  // ── Bankroll (reads mlb_k_bankroll_summary + mlb_k_bankroll_curve) ──
-  if(view==='bank'){
-    let summary=[], curve=[], cfg=null;
-    try{
-      const sq=await sb.from('mlb_k_bankroll_summary').select('*');
-      if(sq.error) throw sq.error;
-      summary=sq.data||[];
-      const cq=await sb.from('mlb_k_bankroll_curve').select('*').order('bet_no',{ascending:true});
-      if(cq.error) throw cq.error;
-      curve=cq.data||[];
-      const bq=await sb.from('raya_bankroll').select('*').eq('id',1).single();
-      if(!bq.error) cfg=bq.data;
-    }catch(err){
-      app.innerHTML=shellHTML('Paper Trading','Bankroll',dash,`<div class="empty"><b>Couldn\u2019t load</b>${esc(err.message||String(err))}</div>`,bankFoot(null,null),'Bankroll current through');
-      wire(); return;
-    }
-
-    const byTier={}; summary.forEach(r=>{ byTier[r.tier]=r; });
-    const overall=byTier.overall||null;
-    const start = cfg ? +cfg.starting_balance : (overall ? (+overall.balance - +overall.net_dollars) : null);
-    const unit  = cfg ? +cfg.unit_size : null;
-    const lastDay = curve.length ? curve.map(b=>b.slate_date).filter(Boolean).sort().slice(-1)[0] : null;
-    const through = lastDay || 'no settled bets';
-    const money=x=>(x<0?'\u2212':'')+'$'+Math.abs(x).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-    const dMoney=x=>(x>=0?'+':'\u2212')+'$'+Math.abs(x).toFixed(2);
-
-    if(!overall || +overall.settled===0){
-      const note=`<div class="note">The bankroll fills in as the strikeout grader settles picks into the brief log. Three tiers track separately \u2014 every qualifying pick (Overall), the top 10 ranked, and the sharpest 5.</div>`;
-      const empty=`<div class="empty"><b>Bankroll standing by</b>${start!=null?`Starting balance ${money(start)}`:'Awaiting config'}${unit!=null?` \u00b7 flat 1u = ${money(unit)}`:''}. First settled pick opens the ledger.</div>`;
-      app.innerHTML=shellHTML('Paper Trading','Bankroll',through,note+empty,bankFoot(start,unit),'Bankroll current through');
-      wire(); return;
-    }
-
-    const netD=+overall.net_dollars, bal=+overall.balance;
-    const pct=(start&&start>0)?netD/start*100:0;
-    const nuO=+overall.net_units, roiO=+overall.roi_per_bet*100;
-    const hero=`<div class="bankhero">
-      <div class="blab">Overall balance \u00b7 flat 1u</div>
-      <div class="big">${money(bal)}</div>
-      <div class="delta"><span class="${cls(netD)==='mut'?'':cls(netD)}">${dMoney(netD)}</span> (${pct>=0?'+':'\u2212'}${Math.abs(pct).toFixed(1)}%)${start!=null?` vs ${money(start)} start`:''}</div>
-      <div class="kelly"><span>${overall.settled} settled \u00b7 ${nuO>=0?'+':'\u2212'}${Math.abs(nuO).toFixed(2)}u net</span><b>${roiO>=0?'+':'\u2212'}${Math.abs(roiO).toFixed(1)}% / bet</b></div>
-    </div>`;
-
-    const eq=buildEquity(curve,start);
-
-    const tierCard=(r,rail,name)=>{
-      if(!r) return '';
-      const w=+r.wins,l=+r.losses,p=+r.pushes,settled=+r.settled;
-      const rec=settled?`${w}${dash}${l}${p?`${dash}${p}p`:''}`:`0${dash}0`;
-      const hit=r.hit_pct==null?null:+r.hit_pct;
-      const hitVal=hit==null?`<span class="val mut">${dash}</span>`:`<span class="val ${hit>=BREAKEVEN?'pos':'neg'}">${hit.toFixed(1)}<i>%</i></span>`;
-      const beCls=hit==null?'':(hit>=BREAKEVEN?'clear':'short');
-      const roi=+r.roi_per_bet*100;
-      const roiVal=`<span class="val ${cls(roi)}">${roi>=0?'+':'\u2212'}${Math.abs(roi).toFixed(1)}<i>%</i></span>`;
-      const nu=+r.net_units;
-      const netVal=`<span class="val ${cls(nu)}">${nu>=0?'+':'\u2212'}${Math.abs(nu).toFixed(2)}<i>u</i></span>`;
-      return `<section class="tier">
-        <div class="tier-rail">${rail}</div>
-        <div class="tier-body">
-          <div class="tier-head"><div class="tier-name">${name}</div><div class="tier-desc">bal ${money(+r.balance)}</div></div>
-          <div class="cume">
-            <div class="stat"><span class="lab">Record</span><span class="val">${rec}</span></div>
-            <div class="stat"><span class="lab">Hit&nbsp;%</span>${hitVal}<span class="be ${beCls}">need ${BREAKEVEN}%</span></div>
-            <div class="stat"><span class="lab">ROI</span>${roiVal}</div>
-            <div class="stat"><span class="lab">Net</span>${netVal}</div>
-          </div>
-        </div></section>`;
-    };
-    const tiers=`<div class="scb-list">
-      ${tierCard(byTier.overall,'<b>ALL</b><span class="sum">\u03A3</span>','Overall')}
-      ${tierCard(byTier.top10,'<b>TOP</b><span class="two">10</span>','Top 10')}
-      ${tierCard(byTier.top5,'<b>TOP</b><span>5</span>','Top 5')}</div>`;
-
-    const note=`<div class="note">Reads <b>mlb_k_bankroll_summary</b> (tiers) and <b>mlb_k_bankroll_curve</b> (equity) \u2014 both derived live from the strikeout brief log, flat 1u staking. Updates every grade cycle.</div>`;
-    const mid=`${hero}${eq}${note}${tiers}`;
-    app.innerHTML=shellHTML('Paper Trading','Bankroll',through,mid,bankFoot(start,unit),'Bankroll current through');
-    wire(); return;
-  }
-}
-function wcFoot(){ return `<div class="row"><span>CLV harness \u00b7 twice daily</span><span>PrizePicks <b>WORLD CUP</b></span></div>
-  <div class="row"><span>Open vs close \u00b7 grades after Jun 11</span><span><a id="signout">Sign out</a></span></div>`; }
-function buildEquity(curve, start){
-  if(!curve || !curve.length) return '';
-  const pts = (start!=null ? [+start] : []).concat(curve.map(b=>+b.balance));
-  const n = pts.length;
-  if(n<2) return '';
-  const W=366, H=96, padX=4, padY=12;
-  const min=Math.min(...pts), max=Math.max(...pts);
-  const span=(max-min)||1;
-  const X=i=> padX + i*(W-2*padX)/(n-1);
-  const Y=v=> padY + (max-v)/span*(H-2*padY);
-  const path = pts.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(' ');
-  const area = `${path} L${X(n-1).toFixed(1)} ${(H-padY).toFixed(1)} L${X(0).toFixed(1)} ${(H-padY).toFixed(1)} Z`;
-  const base = (start!=null) ? +start : pts[0];
-  const up = pts[n-1] >= base;
-  const col = up ? 'var(--pos)' : 'var(--neg)';
-  const bY = (base>=min && base<=max) ? Y(base) : null;
-  const baseLine = bY!=null ? `<line x1="${padX}" y1="${bY.toFixed(1)}" x2="${(W-padX).toFixed(1)}" y2="${bY.toFixed(1)}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4"/>` : '';
-  const m=v=>'$'+Math.round(v).toLocaleString('en-US');
-  return `<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 14px 10px;margin-top:11px">
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px">
-      <b style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:16px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink)">Equity Curve</b>
-      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)">overall \u00b7 ${n-1} settled</span>
-    </div>
-    <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:96px" preserveAspectRatio="none">
-      ${baseLine}
-      <path d="${area}" fill="${col}" opacity="0.10"/>
-      <path d="${path}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
-      <circle cx="${X(n-1).toFixed(1)}" cy="${Y(pts[n-1]).toFixed(1)}" r="3.2" fill="${col}"/>
-    </svg>
-    <div style="display:flex;justify-content:space-between;margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)">
-      <span>min ${m(min)}</span><span>peak ${m(max)}</span><span style="color:var(--mute)">now ${m(pts[n-1])}</span>
-    </div>
+    <div class="bct-list" id="list">${body}</div>
+    <div class="bct-foot"><span>${footL}</span>
+      <span>${footR} &middot; <a id="signout">Sign out</a></span></div>
   </div>`;
+  app.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; render(); });
+  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.tour) { ttour = t.dataset.tour; } else if (view === 'wc') { wstat = t.dataset.stat; } else { tstat = t.dataset.stat; } render(); });
+  const so = document.getElementById('signout');
+  if (so) so.onclick = async () => { await sb.auth.signOut(); route(); };
 }
-function bankFoot(start,unit){
-  const s = typeof start==='number' ? `$${start.toLocaleString()}` : '\u2014';
-  const u = typeof unit==='number' ? `$${unit}` : '\u2014';
-  return `<div class="row"><span>Flat 1u = ${u} \u00b7 1% of ${s} start</span><span>Paper <b>Raya bankroll</b></span></div>
-  <div class="row"><span>Quarter-Kelly tracked in shadow</span><span><a id="signout">Sign out</a></span></div>`; }
-async function route(){ const {data:{session}}=await sb.auth.getSession(); if(session) board(); else authScreen(); }
-sb.auth.onAuthStateChange((_e,s)=>{ if(s) board(); });
+
+async function render() {
+  app.innerHTML = `<div class="loading">Loading…</div>`;
+  if (view === 'k') {
+    const { data, error } = await sb.from('mlb_k_brief').select('*').order('rank', { ascending: true });
+    if (error) return shell('Strikeout Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
+    const picks = data || [];
+    const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
+      { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
+    const body = picks.length ? picks.map((p,idx)=>kCard(p,idx+1)).join('')
+                              : '<div class="bct-empty">No picks posted yet today.</div>';
+    shell('Strikeout Brief', `${dateLbl} &middot; Opening Lines`, body,
+          `${picks.length} Strikeout Calls`, 'Model <b>linreg_k_v1</b>');
+  } else if (view === 'tennis') {
+    const { data, error } = await sb.from('tennis_serve_brief').select('*')
+      .eq('stat', tstat).eq('tour', ttour).order('rank', { ascending: true });
+    if (error) return shell('Tennis Serve Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
+    const picks = data || [];
+    const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
+      { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
+    const body = picks.length ? picks.map((p,idx)=>tennisCard(p,idx+1)).join('')
+                              : `<div class="bct-empty">No ${ttour} ${tstat==='df'?'double-fault':'ace'} projections posted yet.</div>`;
+    const label = tstat === 'df' ? 'Double-Fault Projections' : 'Ace Projections';
+    shell('Tennis Serve Brief', `${dateLbl} &middot; Raya Projections`, body,
+          `${ttour} &middot; ${picks.length} ${label}`, `Model <b>${ttour.toLowerCase()}_serve_v1</b>`);
+  } else if (view === 'epl') {
+    const { data, error } = await sb.from('soccer_shots_brief').select('*').order('rank', { ascending: true });
+    if (error) return shell('EPL Shots Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
+    const picks = data || [];
+    const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
+      { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
+    const body = picks.length ? picks.map((p,idx)=>soccerCard(p,idx+1)).join('')
+                              : '<div class="bct-empty">No EPL picks posted &mdash; the shots brief resumes when the season returns.</div>';
+    shell('EPL Shots Brief', `${dateLbl} &middot; PrizePicks Lines`, body,
+          `${picks.length} Shot Calls`, 'Model <b>understat shots</b>');
+  } else {
+    // World Cup — watch list of tracked lines (no calls; CLV-tracked on HQ)
+    const { data, error } = await sb.from('intl_shots_line_snapshots').select('*')
+      .eq('odds_type', 'standard').order('captured_at', { ascending: false }).limit(400);
+    const rows = error ? [] : (data || []);
+    const latestTs = rows.length ? rows[0].captured_at : null;
+    const board = rows.filter(r => r.captured_at === latestTs && r.stat_type === wstat)
+                      .sort((a,b) => (+b.line) - (+a.line));
+    const note = `<div class="wc-note">World Cup isn't a call board &mdash; the shots model doesn't beat the market, so there are no picks here. These are the standard lines Raya is tracking into the openers; closing-line value is graded on the HQ scoreboard.</div>`;
+    const body = board.length
+      ? note + board.map((r,idx)=>wcCard(r,idx+1)).join('')
+      : `${note}<div class="bct-empty">No standard ${wstat==='Shots'?'shot':'SOT'} lines posted yet.</div>`;
+    const dateLbl = latestTs ? new Date(latestTs).toLocaleDateString('en-US',
+      { weekday:'short', month:'short', day:'numeric' }).toUpperCase() : '';
+    shell('World Cup Watch', `${dateLbl} &middot; Lines Tracked`, body,
+          `${board.length} ${wstat==='Shots'?'Shot':'SOT'} Lines`, 'CLV &middot; <b>grades after Jun 11</b>');
+  }
+}
+
+async function route() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) render(); else authScreen();
+}
+
+sb.auth.onAuthStateChange((_e, session) => { if (session) render(); });
 route();
-if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
 </script>
 </body>
 </html>
