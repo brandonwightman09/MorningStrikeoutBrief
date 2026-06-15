@@ -87,6 +87,9 @@
   .bct-tdot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;margin-right:6px}
   .bct-tdot.bct-dk{background:oklch(0.74 0.16 150)}.bct-tdot.bct-fd{background:oklch(0.66 0.16 250)}
   .bct-tdot.bct-pp{background:var(--acc)}
+  .bct-tdot.bct-mgm{background:oklch(0.80 0.15 85)}.bct-tdot.bct-hr{background:oklch(0.62 0.21 350)}
+  .bct-cmeta{margin-top:11px;font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .bct-cmeta b{color:var(--acc-d);font-weight:600}
   .bct-trow{display:flex;align-items:baseline;margin-top:5px}
   .bct-tln{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:24px;line-height:.9;font-variant-numeric:tabular-nums}
   .bct-tpx{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--acc);font-variant-numeric:tabular-nums;margin-left:9px}
@@ -209,21 +212,53 @@ function kCard(p, i) {
     </div></div>`;
 }
 
-/* ── tennis card (projection-only: Raya number, no market line) ── */
+/* ── tennis game-totals card (Raya number + DK/BetMGM/HardRock tiles, CLV-gated) ── */
 function tennisCard(p, i) {
-  const unit = p.stat === 'df' ? 'DF' : 'ACES';
+  const sideOver = (p.best_side || '').toLowerCase() === 'over';
+  const fired = p.bet_fired === true;
   const surf = p.surface ? ` &middot; ${esc(String(p.surface).toUpperCase())}` : '';
-  const conf = (p.confidence || '').toUpperCase();
-  return `<div class="bct-card">
-    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
+  const sidePx = (over, under) => (sideOver ? over : under);
+  const tile = (bk, label, dot, ln, over, under) => {
+    if (ln == null) return '';
+    const best = fired && p.best_book === bk;
+    const cls  = 'bct-tile' + (best ? ' bct-best' : '');
+    const ribbon = best ? '<span class="bct-ribbon">Raya Bet</span>' : '';
+    const px = sidePx(over, under);
+    const pxHtml = px == null ? '<span class="bct-tpx bct-na">&mdash;</span>'
+                              : `<span class="bct-tpx">${fmtOdds(px)}</span>`;
+    return `<div class="${cls}">${ribbon}
+      <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${label}</div>
+      <div class="bct-trow"><span class="bct-tln">${fmtLine(ln)}</span>${pxHtml}</div></div>`;
+  };
+  const raya = p.raya_total != null ? (+p.raya_total).toFixed(1) : '--';
+  const betBar = fired
+    ? `<div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
+        <span class="bct-side">${esc((p.best_side||'').toUpperCase())}</span>
+        <span class="bct-ln">${fmtLine(p.book_line)}</span>
+        <span class="bct-proj">RAYA <b>${raya}</b></span>
+      </div>`
+    : `<div class="bct-bet" style="border-color:var(--line);background:transparent;opacity:.7">
+        <span class="bct-side" style="color:var(--mute)">${esc((p.best_side||'').toUpperCase())} LEAN</span>
+        <span class="bct-ln" style="color:var(--mute)">${fmtLine(p.book_line)}</span>
+        <span class="bct-proj">RAYA <b>${raya}</b></span>
+      </div>`;
+  const evTxt  = p.best_ev   != null ? `EV ${p.best_ev>0?'+':''}${(+p.best_ev*100).toFixed(1)}%` : '';
+  const clvTxt = p.clv_pinn  != null ? `CLV ${p.clv_pinn>0?'+':''}${(+p.clv_pinn).toFixed(1)} vs sharp` : '';
+  const meta = fired
+    ? `<b>${evTxt}</b>${clvTxt?` &middot; ${clvTxt}`:''}`
+    : (p.clv_pinn != null && +p.clv_pinn < 0 ? 'No bet &middot; line worse than sharp' : 'No bet &middot; below EV threshold');
+  return `<div class="bct-card"${fired?'':' style="opacity:.82"'}>
+    <div class="bct-rail"><div class="bct-rank"><b>${fired?'BET':'&middot;'}</b>${String(i).padStart(2,'0')}</div></div>
     <div class="bct-main">
-      <div class="bct-name">${esc(p.player_name)}</div>
-      <div class="bct-match">${esc(p.event_name)}${surf}</div>
-      <div class="bct-bet" style="border-color:var(--acc-d);background:color-mix(in oklch,var(--acc) 9%,transparent)">
-        <span class="bct-side" style="color:var(--acc)">Proj</span>
-        <span class="bct-ln">${p.raya_proj!=null?(+p.raya_proj).toFixed(1):'--'}</span>
-        <span class="bct-proj">${unit}${conf?` &middot; <b>${conf}</b>`:''}</span>
+      <div class="bct-name">${esc(p.player_home)} <span style="color:var(--faint)">v</span> ${esc(p.player_away)}</div>
+      <div class="bct-match">${esc(p.tournament||'')}${surf}</div>
+      ${betBar}
+      <div class="bct-tiles">
+        ${tile('draftkings','DraftKings','bct-dk',p.dk_line,p.dk_over,p.dk_under)}
+        ${tile('betmgm','BetMGM','bct-mgm',p.mgm_line,p.mgm_over,p.mgm_under)}
+        ${tile('hardrock','Hard Rock','bct-hr',p.hr_line,p.hr_over,p.hr_under)}
       </div>
+      <div class="bct-cmeta">${meta}</div>
     </div></div>`;
 }
 
@@ -271,15 +306,7 @@ function wcCard(r, i) {
 }
 
 function shell(metaTitle, metaSub, body, footL, footR) {
-  const subtabs = view === 'tennis' ? `
-    <div class="subtabs">
-      <div class="subtab ${ttour==='WTA'?'on':''}" data-tour="WTA">WTA</div>
-      <div class="subtab ${ttour==='ATP'?'on':''}" data-tour="ATP">ATP</div>
-    </div>
-    <div class="subtabs">
-      <div class="subtab ${tstat==='ace'?'on':''}" data-stat="ace">Aces</div>
-      <div class="subtab ${tstat==='df'?'on':''}" data-stat="df">Double Faults</div>
-    </div>` : view === 'wc' ? `
+  const subtabs = view === 'wc' ? `
     <div class="subtabs">
       <div class="subtab ${wstat==='Shots'?'on':''}" data-stat="Shots">Shots</div>
       <div class="subtab ${wstat==='Shots On Target'?'on':''}" data-stat="Shots On Target">On Target</div>
@@ -320,17 +347,17 @@ async function render() {
     shell('Strikeout Brief', `${dateLbl} &middot; Opening Lines`, body,
           `${picks.length} Strikeout Calls`, 'Model <b>linreg_k_v1</b>');
   } else if (view === 'tennis') {
-    const { data, error } = await sb.from('tennis_serve_brief').select('*')
-      .eq('stat', tstat).eq('tour', ttour).order('rank', { ascending: true });
-    if (error) return shell('Tennis Serve Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
+    const { data, error } = await sb.from('tennis_games_card').select('*')
+      .order('bet_fired', { ascending: false }).order('best_ev', { ascending: false, nullsFirst: false });
+    if (error) return shell('Tennis Totals Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
     const picks = data || [];
-    const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
+    const nbet = picks.filter(p => p.bet_fired).length;
+    const dateLbl = picks[0]?.slate_date ? new Date(picks[0].slate_date + 'T00:00:00').toLocaleDateString('en-US',
       { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
     const body = picks.length ? picks.map((p,idx)=>tennisCard(p,idx+1)).join('')
-                              : `<div class="bct-empty">No ${ttour} ${tstat==='df'?'double-fault':'ace'} projections posted yet.</div>`;
-    const label = tstat === 'df' ? 'Double-Fault Projections' : 'Ace Projections';
-    shell('Tennis Serve Brief', `${dateLbl} &middot; Raya Projections`, body,
-          `${ttour} &middot; ${picks.length} ${label}`, `Model <b>${ttour.toLowerCase()}_serve_v1</b>`);
+                              : '<div class="bct-empty">No tennis totals projections posted yet.</div>';
+    shell('Tennis Totals Brief', `${dateLbl} &middot; Game Totals &middot; Raya Number`, body,
+          `${nbet} Bet${nbet===1?'':'s'} &middot; ${picks.length} Projected`, 'Gate <b>EV 4% + CLV</b>');
   } else if (view === 'epl') {
     const { data, error } = await sb.from('soccer_shots_brief').select('*').order('rank', { ascending: true });
     if (error) return shell('EPL Shots Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
