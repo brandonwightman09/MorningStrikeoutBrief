@@ -306,7 +306,11 @@ function wcCard(r, i) {
 }
 
 function shell(metaTitle, metaSub, body, footL, footR) {
-  const subtabs = view === 'wc' ? `
+  const subtabs = view === 'tennis' ? `
+    <div class="subtabs">
+      <div class="subtab ${ttour==='WTA'?'on':''}" data-tour="WTA">WTA</div>
+      <div class="subtab ${ttour==='ATP'?'on':''}" data-tour="ATP">ATP</div>
+    </div>` : view === 'wc' ? `
     <div class="subtabs">
       <div class="subtab ${wstat==='Shots'?'on':''}" data-stat="Shots">Shots</div>
       <div class="subtab ${wstat==='Shots On Target'?'on':''}" data-stat="Shots On Target">On Target</div>
@@ -348,6 +352,7 @@ async function render() {
           `${picks.length} Strikeout Calls`, 'Model <b>linreg_k_v1</b>');
   } else if (view === 'tennis') {
     const { data, error } = await sb.from('tennis_games_card').select('*')
+      .eq('tour', ttour)
       .order('bet_fired', { ascending: false }).order('best_ev', { ascending: false, nullsFirst: false });
     if (error) return shell('Tennis Totals Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
     const picks = data || [];
@@ -355,9 +360,9 @@ async function render() {
     const dateLbl = picks[0]?.slate_date ? new Date(picks[0].slate_date + 'T00:00:00').toLocaleDateString('en-US',
       { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
     const body = picks.length ? picks.map((p,idx)=>tennisCard(p,idx+1)).join('')
-                              : '<div class="bct-empty">No tennis totals projections posted yet.</div>';
-    shell('Tennis Totals Brief', `${dateLbl} &middot; Game Totals &middot; Raya Number`, body,
-          `${nbet} Bet${nbet===1?'':'s'} &middot; ${picks.length} Projected`, 'Gate <b>EV 4% + CLV</b>');
+                              : `<div class="bct-empty">No ${ttour} totals projections posted yet.</div>`;
+    shell('Tennis Totals Brief', `${dateLbl} &middot; ${ttour} Game Totals &middot; Raya Number`, body,
+          `${nbet} Bet${nbet===1?'':'s'} &middot; ${picks.length} Projected`, 'Gate <b>EV 4% + sharp line</b>');
   } else if (view === 'epl') {
     const { data, error } = await sb.from('soccer_shots_brief').select('*').order('rank', { ascending: true });
     if (error) return shell('EPL Shots Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
