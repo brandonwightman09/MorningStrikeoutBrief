@@ -126,6 +126,18 @@ let view = 'k';        // 'k' | 'tennis' | 'epl' | 'wc'
 let tstat = 'ace';     // 'ace' | 'df'
 let ttour = 'WTA';     // 'WTA' | 'ATP'
 let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
+let kmode = 'flat';    // 'flat' | 'kelly' — strikeout stake sizing; flat is the live default
+
+// Strikeout staking config (edit and redeploy to change). 1 unit = $30.
+// Flat stakes 1u per pick. ¼-Kelly sizes off raya_prob vs the best price,
+// capped per pick and scaled so the slate total never exceeds slateCapU.
+const STAKE = { bankroll: 1500, unit: 30, kellyFrac: 0.25, pickCapU: 2.0, slateCapU: 5.0 };
+let _kStakes = {};     // computed each render: pitcher_name -> { stakeU, dollars, toWin }
+
+// Visible build stamp — bump on each deploy. Lets you confirm at a glance which
+// markup the Home-Screen icon is actually running. Keep the version aligned with
+// the service-worker cache name in sw.js (currently 'raya-brief-v2').
+const BUILD = 'v3 / 2026-06-18';
 
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
@@ -180,6 +192,30 @@ function authScreen(msg, cls) {
 }
 
 /* ── strikeout card (unchanged) ── */
+function computeKStakes(picks) {
+  const dec = px => px == null ? null : (px > 0 ? 1 + px/100 : 1 + 100/Math.abs(px));
+  const raw = picks.map(p => {
+    const d = dec(p.best_price);
+    if (d == null) return { u:0, b:null };
+    const b = d - 1, prob = p.raya_prob != null ? +p.raya_prob : null;
+    if (prob == null) return { u:0, b };
+    const f = (prob*b - (1-prob)) / b;
+    const u = Math.max(0, Math.min(STAKE.pickCapU, f*STAKE.kellyFrac*STAKE.bankroll/STAKE.unit));
+    return { u, b };
+  });
+  const slate = raw.reduce((s,r)=>s+r.u,0);
+  const scale = slate > STAKE.slateCapU ? STAKE.slateCapU/slate : 1;
+  const out = {};
+  picks.forEach((p,idx) => {
+    const r = raw[idx];
+    const stakeU = kmode === 'flat' ? 1.0 : +(r.u*scale).toFixed(2);
+    const dollars = Math.round(stakeU * STAKE.unit);
+    const toWin = (r.b != null && dollars > 0) ? Math.round(dollars * r.b) : null;
+    out[p.pitcher_name] = { stakeU, dollars, toWin };
+  });
+  return out;
+}
+
 function kCard(p, i) {
   const differ = p.dk_line != null && p.fd_line != null && (+p.dk_line) !== (+p.fd_line);
   const sideOver = (p.bet_side || '').toLowerCase() === 'over';
@@ -209,6 +245,28 @@ function kCard(p, i) {
         ${tile('draftkings','DraftKings','bct-dk',p.dk_line,p.dk_price)}
         ${tile('fanduel','FanDuel','bct-fd',p.fd_line,p.fd_price)}
       </div>
+      ${(() => {
+        const st = _kStakes[p.pitcher_name] || { stakeU:1, dollars:STAKE.unit, toWin:null };
+        if (!(st.dollars > 0)) return '';
+        const isFD = p.best_book === 'fanduel';
+        const label = isFD ? 'FanDuel' : 'DraftKings';
+        const bg = isFD ? 'oklch(0.66 0.16 250)' : 'oklch(0.74 0.16 150)';
+        const fg = isFD ? 'oklch(0.97 0.02 250)' : 'oklch(0.16 0.02 150)';
+        const q = encodeURIComponent(p.pitcher_name);
+        const url = isFD ? `https://sportsbook.fanduel.com/search?q=${q}`
+                         : `https://sportsbook.draftkings.com/search?q=${q}`;
+        const win = st.toWin != null ? `<div style="display:flex;flex-direction:column;line-height:1.1">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase">To win</span>
+            <span style="font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:18px;color:var(--over)">$${st.toWin}</span></div>` : '';
+        return `<div style="display:flex;align-items:center;gap:14px;margin-top:12px;padding:9px 11px;background:var(--tile);border:1px dashed var(--line);border-radius:9px">
+          <div style="display:flex;flex-direction:column;line-height:1.1">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase">Stake</span>
+            <span style="font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:18px">$${st.dollars}<small style="font-size:11px;color:var(--mute);font-weight:600;margin-left:3px">${st.stakeU.toFixed(1)}u</small></span></div>
+          ${win}
+          <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;color:var(--acc);text-transform:uppercase">${kmode==='kelly'?'¼-Kelly':'Flat 1u'}</span>
+        </div>
+        <a href="${url}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:9px;padding:11px;border-radius:9px;text-decoration:none;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.04em;text-transform:uppercase;background:${bg};color:${fg}">Place on ${label} &#8599;</a>`;
+      })()}
     </div></div>`;
 }
 
@@ -314,6 +372,10 @@ function shell(metaTitle, metaSub, body, footL, footR) {
     <div class="subtabs">
       <div class="subtab ${wstat==='Shots'?'on':''}" data-stat="Shots">Shots</div>
       <div class="subtab ${wstat==='Shots On Target'?'on':''}" data-stat="Shots On Target">On Target</div>
+    </div>` : view === 'k' ? `
+    <div class="subtabs" style="justify-content:flex-end">
+      <div class="subtab ${kmode==='flat'?'on':''}" data-kmode="flat" style="flex:0 0 auto;padding:7px 16px">Flat 1u</div>
+      <div class="subtab ${kmode==='kelly'?'on':''}" data-kmode="kelly" style="flex:0 0 auto;padding:7px 16px">&frac14;-Kelly</div>
     </div>` : '';
   app.innerHTML = `<div class="bct">
     <div class="bct-hdr">
@@ -329,11 +391,11 @@ function shell(metaTitle, metaSub, body, footL, footR) {
     </div>
     ${subtabs}
     <div class="bct-list" id="list">${body}</div>
-    <div class="bct-foot"><span>${footL}</span>
+    <div class="bct-foot"><span>${footL}${footL?' &middot; ':''}<b>${BUILD}</b></span>
       <span>${footR} &middot; <a id="signout">Sign out</a></span></div>
   </div>`;
   app.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; render(); });
-  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.tour) { ttour = t.dataset.tour; } else if (view === 'wc') { wstat = t.dataset.stat; } else { tstat = t.dataset.stat; } render(); });
+  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.tour) { ttour = t.dataset.tour; } else if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (view === 'wc') { wstat = t.dataset.stat; } else { tstat = t.dataset.stat; } render(); });
   const so = document.getElementById('signout');
   if (so) so.onclick = async () => { await sb.auth.signOut(); route(); };
 }
@@ -344,6 +406,7 @@ async function render() {
     const { data, error } = await sb.from('mlb_k_brief').select('*').order('rank', { ascending: true });
     if (error) return shell('Strikeout Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
     const picks = data || [];
+    _kStakes = computeKStakes(picks);
     const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
       { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
     const body = picks.length ? picks.map((p,idx)=>kCard(p,idx+1)).join('')
