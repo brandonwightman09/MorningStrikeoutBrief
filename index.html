@@ -400,9 +400,25 @@ async function route() {
 sb.auth.onAuthStateChange((_e, session) => { if (session) render(); });
 route();
 
+/* ── keep the brief fresh on Home-Screen reopen ─────────────────────────
+   iOS freezes a standalone PWA and restores it without re-fetching, so we
+   re-pull the current view whenever the app returns to the foreground. ── */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 }
+
+let _lastFresh = Date.now();
+async function _resumeRefresh(force) {
+  if (!force && document.visibilityState !== 'visible') return;
+  if (!force && Date.now() - _lastFresh < 15000) return;
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return;
+  _lastFresh = Date.now();
+  render();
+}
+document.addEventListener('visibilitychange', () => _resumeRefresh(false));
+window.addEventListener('focus', () => _resumeRefresh(false));
+window.addEventListener('pageshow', (e) => { if (e.persisted) _resumeRefresh(true); });
 </script>
 </body>
 </html>
