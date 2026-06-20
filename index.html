@@ -118,6 +118,21 @@ const SUPABASE_ANON_KEY = 'sb_publishable_64yRp9qL6lES2TGOItXeEg_UFtWQfJ2';
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const app = document.getElementById('app');
 
+// Open the DraftKings app at the exact game; fall back to the web event page.
+window.placeDK = (web) => {
+  const m = (web || '').match(/\/event\/(\d+)/);
+  if (!m) { window.location.href = web; return; }   // lobby / no event id -> web
+  const appUrl = `dksb://sb/event/${m[1]}`;
+  let left = false;
+  const onHide = () => { left = true; };
+  document.addEventListener('visibilitychange', onHide, { once: true });
+  setTimeout(() => {
+    document.removeEventListener('visibilitychange', onHide);
+    if (!left && !document.hidden) window.location.href = web;   // app didn't take over
+  }, 1200);
+  window.location.href = appUrl;   // try the app first
+};
+
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmtLine = x => (x == null ? '' : (+x).toString());
 const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
@@ -254,7 +269,8 @@ function kCard(p, i) {
         const fg = isFD ? 'oklch(0.97 0.02 250)' : 'oklch(0.16 0.02 150)';
         const q = encodeURIComponent(p.pitcher_name);
         const url = isFD ? `https://sportsbook.fanduel.com/search?q=${q}`
-                         : `https://sportsbook.draftkings.com/search?q=${q}`;
+                         : (p.dk_link || `https://sportsbook.draftkings.com/leagues/baseball/mlb`);
+        const clickAttr = isFD ? 'target="_blank" rel="noopener"' : `onclick="placeDK('${url}');return false;"`;
         const win = st.toWin != null ? `<div style="display:flex;flex-direction:column;line-height:1.1">
             <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase">To win</span>
             <span style="font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:18px;color:var(--over)">$${st.toWin}</span></div>` : '';
@@ -265,7 +281,7 @@ function kCard(p, i) {
           ${win}
           <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;color:var(--acc);text-transform:uppercase">${kmode==='kelly'?'¼-Kelly':'Flat 1u'}</span>
         </div>
-        <a href="${url}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:9px;padding:11px;border-radius:9px;text-decoration:none;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.04em;text-transform:uppercase;background:${bg};color:${fg}">Place on ${label} &#8599;</a>`;
+        <a href="${url}" ${clickAttr} style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:9px;padding:11px;border-radius:9px;text-decoration:none;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.04em;text-transform:uppercase;background:${bg};color:${fg}">Place on ${label} &#8599;</a>`;
       })()}
     </div></div>`;
 }
