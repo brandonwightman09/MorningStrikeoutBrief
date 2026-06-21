@@ -150,7 +150,7 @@ let _kStakes = {};     // computed each render: pitcher_name -> { stakeU, dollar
 // Visible build stamp — bump on each deploy. Lets you confirm at a glance which
 // markup the Home-Screen icon is actually running. Keep the version aligned with
 // the service-worker cache name in sw.js (currently 'raya-brief-v2').
-const BUILD = 'v5 / 2026-06-21';
+const BUILD = 'v6 / 2026-06-21';
 
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
@@ -315,6 +315,20 @@ function outsCard(p, i) {
         ${tile('draftkings','DraftKings','bct-dk',p.dk_line,p.dk_price)}
         ${tile('fanduel','FanDuel','bct-fd',p.fd_line,p.fd_price)}
       </div>
+      ${(() => {
+        // Place button mirrors kCard: routes to the best-priced book. FanDuel
+        // opens a player search; DraftKings has no dk_link on the outs board
+        // (no harvester), so it falls back to the MLB lobby via placeDK.
+        const isFD = p.best_book === 'fanduel';
+        const label = isFD ? 'FanDuel' : 'DraftKings';
+        const bg = isFD ? 'oklch(0.66 0.16 250)' : 'oklch(0.74 0.16 150)';
+        const fg = isFD ? 'oklch(0.97 0.02 250)' : 'oklch(0.16 0.02 150)';
+        const q = encodeURIComponent(p.pitcher_name);
+        const url = isFD ? `https://sportsbook.fanduel.com/search?q=${q}`
+                         : `https://sportsbook.draftkings.com/leagues/baseball/mlb`;
+        const clickAttr = isFD ? 'target="_blank" rel="noopener"' : `onclick="placeDK('${url}');return false;"`;
+        return `<a href="${url}" ${clickAttr} style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:11px;padding:11px;border-radius:9px;text-decoration:none;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.04em;text-transform:uppercase;background:${bg};color:${fg}">Place on ${label} &#8599;</a>`;
+      })()}
     </div></div>`;
 }
 
