@@ -139,6 +139,7 @@ const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
 
 let view = 'k';        // 'k' | 'outs' | 'epl' | 'wc'
 let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
+let wnbaStat = 'all';  // 'all' | 'points' | 'rebounds' | 'assists' | 'threes'
 let kmode = 'flat';    // 'flat' | 'kelly' — strikeout stake sizing; flat is the live default
 
 // Strikeout staking config (edit and redeploy to change). 1 unit = $30.
@@ -286,6 +287,41 @@ function kCard(p, i) {
 
 /* ── pitcher-outs card (forward-test): mirrors kCard, reads raya_projected_outs,
    no Kelly/deep-link block (paper only, mlb_outs_brief has no dk_link/stakes) ── */
+function wnbaCard(p, i) {
+  const lns = [p.dk_line, p.fd_line, p.pin_line].filter(x => x != null);
+  const differ = lns.length > 1 && Math.max(...lns) !== Math.min(...lns);
+  const sideOver = (p.bet_side || '').toLowerCase() === 'over';
+  const unit = ({points:'PTS',rebounds:'REB',assists:'AST',threes:'3PM'})[p.stat] || '';
+  const tile = (bk, label, dot, ln, px) => {
+    if (ln == null) return '';
+    const best = p.best_book === bk;
+    const off  = differ && !best;
+    const cls  = 'bct-tile' + (best ? ' bct-best' : '') + (off ? ' bct-off' : '');
+    const ribbon = best ? '<span class="bct-ribbon">Raya Bet</span>' : '';
+    const price = off ? '<span class="bct-tpx bct-na">off line</span>'
+                      : `<span class="bct-tpx">${fmtOdds(px)}</span>`;
+    return `<div class="${cls}">${ribbon}
+      <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${label}</div>
+      <div class="bct-trow"><span class="bct-tln">${fmtLine(ln)}</span>${price}</div></div>`;
+  };
+  return `<div class="bct-card">
+    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
+    <div class="bct-main">
+      <div class="bct-name">${esc(p.player_name)}</div>
+      <div class="bct-match">${esc(unit)}${p.event_name?` &middot; ${esc(p.event_name)}`:''}</div>
+      <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
+        <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
+        <span class="bct-ln">${fmtLine(p.book_line)}</span>
+        <span class="bct-proj">PROJ <b>${p.raya_projected!=null?(+p.raya_projected).toFixed(1):'--'} ${unit}</b></span>
+      </div>
+      <div class="bct-tiles">
+        ${tile('draftkings','DraftKings','bct-dk',p.dk_line,p.dk_price)}
+        ${tile('fanduel','FanDuel','bct-fd',p.fd_line,p.fd_price)}
+        ${tile('pinnacle','Pinnacle','bct-dk',p.pin_line,p.pin_price)}
+      </div>
+    </div></div>`;
+}
+
 function outsCard(p, i) {
   const differ = p.dk_line != null && p.fd_line != null && (+p.dk_line) !== (+p.fd_line);
   const sideOver = (p.bet_side || '').toLowerCase() === 'over';
@@ -384,6 +420,13 @@ function shell(metaTitle, metaSub, body, footL, footR) {
     <div class="subtabs" style="justify-content:flex-end">
       <div class="subtab ${kmode==='flat'?'on':''}" data-kmode="flat" style="flex:0 0 auto;padding:7px 16px">Flat 1u</div>
       <div class="subtab ${kmode==='kelly'?'on':''}" data-kmode="kelly" style="flex:0 0 auto;padding:7px 16px">&frac14;-Kelly</div>
+    </div>` : view === 'wnba' ? `
+    <div class="subtabs">
+      <div class="subtab ${wnbaStat==='all'?'on':''}" data-wstat="all">All</div>
+      <div class="subtab ${wnbaStat==='points'?'on':''}" data-wstat="points">Pts</div>
+      <div class="subtab ${wnbaStat==='rebounds'?'on':''}" data-wstat="rebounds">Reb</div>
+      <div class="subtab ${wnbaStat==='assists'?'on':''}" data-wstat="assists">Ast</div>
+      <div class="subtab ${wnbaStat==='threes'?'on':''}" data-wstat="threes">3PM</div>
     </div>` : '';
   app.innerHTML = `<div class="bct">
     <div class="bct-hdr">
@@ -396,6 +439,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <div class="tab ${view==='outs'?'on':''}" data-view="outs">Outs</div>
       <div class="tab ${view==='epl'?'on':''}" data-view="epl">EPL Shots</div>
       <div class="tab ${view==='wc'?'on':''}" data-view="wc">World Cup</div>
+      <div class="tab ${view==='wnba'?'on':''}" data-view="wnba">WNBA</div>
     </div>
     ${subtabs}
     <div class="bct-list" id="list">${body}</div>
@@ -403,7 +447,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <span>${footR} &middot; <a id="signout">Sign out</a></span></div>
   </div>`;
   app.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; render(); });
-  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (view === 'wc') { wstat = t.dataset.stat; } render(); });
+  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (t.dataset.wstat) { wnbaStat = t.dataset.wstat; } else if (view === 'wc') { wstat = t.dataset.stat; } render(); });
   const so = document.getElementById('signout');
   if (so) so.onclick = async () => { await sb.auth.signOut(); route(); };
 }
@@ -441,7 +485,7 @@ async function render() {
                               : '<div class="bct-empty">No EPL picks posted &mdash; the shots brief resumes when the season returns.</div>';
     shell('EPL Shots Brief', `${dateLbl} &middot; PrizePicks Lines`, body,
           `${picks.length} Shot Calls`, 'Model <b>understat shots</b>');
-  } else {
+  } else if (view === 'wc') {
     // World Cup — watch list of tracked lines (no calls; CLV-tracked on HQ)
     const { data, error } = await sb.from('intl_shots_line_snapshots').select('*')
       .eq('odds_type', 'standard').order('captured_at', { ascending: false }).limit(400);
@@ -457,6 +501,19 @@ async function render() {
       { weekday:'short', month:'short', day:'numeric' }).toUpperCase() : '';
     shell('World Cup Watch', `${dateLbl} &middot; Lines Tracked`, body,
           `${board.length} ${wstat==='Shots'?'Shot':'SOT'} Lines`, 'CLV &middot; <b>grades after Jun 11</b>');
+  } else {
+    // WNBA props brief — multi-book pick board (open lines), forward-test
+    let q = sb.from('wnba_props_brief').select('*').order('rank', { ascending: true });
+    const { data, error } = await q;
+    if (error) return shell('WNBA Props Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
+    let picks = data || [];
+    if (wnbaStat !== 'all') picks = picks.filter(p => p.stat === wnbaStat);
+    const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
+      { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
+    const body = picks.length ? picks.map((p,idx)=>wnbaCard(p,idx+1)).join('')
+                              : '<div class="bct-empty">No WNBA picks posted yet today.</div>';
+    shell('WNBA Props Brief', `${dateLbl} &middot; Opening Lines`, body,
+          `${picks.length} WNBA Calls`, 'Model <b>min-anchor-v1</b>');
   }
 }
 
