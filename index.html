@@ -503,10 +503,11 @@ async function render() {
           `${board.length} ${wstat==='Shots'?'Shot':'SOT'} Lines`, 'CLV &middot; <b>grades after Jun 11</b>');
   } else {
     // WNBA props brief — multi-book pick board (open lines), forward-test
-    let q = sb.from('wnba_props_brief').select('*').order('rank', { ascending: true });
+    let q = sb.from('wnba_props_brief').select('*').order('slate_date', { ascending: false }).order('rank', { ascending: true }).limit(120);
     const { data, error } = await q;
     if (error) return shell('WNBA Props Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
     let picks = data || [];
+    if (picks.length) { const latest = picks[0].slate_date; picks = picks.filter(p => p.slate_date === latest); }
     if (wnbaStat !== 'all') picks = picks.filter(p => p.stat === wnbaStat);
     const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
       { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
