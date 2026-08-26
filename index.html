@@ -95,6 +95,8 @@
   .bct-tpx{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--acc);font-variant-numeric:tabular-nums;margin-left:9px}
   .bct-tpx.bct-na{color:var(--faint)}
   .bct-ribbon{position:absolute;top:0;right:0;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--bg);background:var(--acc);padding:2px 8px;border-bottom-left-radius:8px}
+  .bct-placed{border-color:var(--over)}
+  .bct-placechip{display:inline-flex;align-items:center;gap:4px;margin-left:8px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--over);border:1px solid var(--over);border-radius:6px;padding:1px 6px;vertical-align:middle}
   .bct-foot{display:flex;align-items:center;justify-content:space-between;margin-top:18px;padding-top:13px;border-top:2px solid var(--line);font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
   .bct-foot b{color:var(--acc-d);font-weight:600}
   .bct-foot a{color:var(--faint);text-decoration:none;cursor:pointer}
@@ -304,11 +306,12 @@ function wnbaCard(p, i) {
       <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${label}</div>
       <div class="bct-trow"><span class="bct-tln">${fmtLine(ln)}</span>${price}</div></div>`;
   };
-  return `<div class="bct-card">
+  const placed = p.place_flag === 1;
+  return `<div class="bct-card${placed?' bct-placed':''}">
     <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
     <div class="bct-main">
       <div class="bct-name">${esc(p.player_name)}</div>
-      <div class="bct-match">${esc(unit)}${p.event_name?` &middot; ${esc(p.event_name)}`:''}</div>
+      <div class="bct-match">${esc(unit)}${p.event_name?` &middot; ${esc(p.event_name)}`:''}${placed?'<span class="bct-placechip">&#10003; Place</span>':''}</div>
       <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
         <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
         <span class="bct-ln">${fmtLine(p.book_line)}</span>
@@ -422,6 +425,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <div class="subtab ${kmode==='kelly'?'on':''}" data-kmode="kelly" style="flex:0 0 auto;padding:7px 16px">&frac14;-Kelly</div>
     </div>` : view === 'wnba' ? `
     <div class="subtabs">
+      <div class="subtab ${wnbaStat==='place'?'on':''}" data-wstat="place">&#10003;</div>
       <div class="subtab ${wnbaStat==='all'?'on':''}" data-wstat="all">All</div>
       <div class="subtab ${wnbaStat==='points'?'on':''}" data-wstat="points">Pts</div>
       <div class="subtab ${wnbaStat==='rebounds'?'on':''}" data-wstat="rebounds">Reb</div>
@@ -508,7 +512,8 @@ async function render() {
     if (error) return shell('WNBA Props Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
     let picks = data || [];
     if (picks.length) { const latest = picks[0].slate_date; picks = picks.filter(p => p.slate_date === latest); }
-    if (wnbaStat !== 'all') picks = picks.filter(p => p.stat === wnbaStat);
+    if (wnbaStat === 'place') picks = picks.filter(p => p.place_flag === 1);
+    else if (wnbaStat !== 'all') picks = picks.filter(p => p.stat === wnbaStat);
     const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
       { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
     const body = picks.length ? picks.map((p,idx)=>wnbaCard(p,idx+1)).join('')
