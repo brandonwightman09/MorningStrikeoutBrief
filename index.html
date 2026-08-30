@@ -139,7 +139,7 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 const fmtLine = x => (x == null ? '' : (+x).toString());
 const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
 
-let view = 'k';        // 'k' | 'outs' | 'epl' | 'wc'
+let view = 'k';        // 'k' | 'wnba' | 'parlay'
 let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
 let wnbaStat = 'all';  // 'all' | 'points' | 'rebounds' | 'assists' | 'threes'
 let kmode = 'flat';    // 'flat' | 'kelly' — strikeout stake sizing; flat is the live default
@@ -153,7 +153,7 @@ let _kStakes = {};     // computed each render: pitcher_name -> { stakeU, dollar
 // Visible build stamp — bump on each deploy. Lets you confirm at a glance which
 // markup the Home-Screen icon is actually running. Keep the version aligned with
 // the service-worker cache name in sw.js (currently 'raya-brief-v2').
-const BUILD = 'v6 / 2026-06-21';
+const BUILD = 'v7 / 2026-08-30';
 
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
@@ -414,12 +414,48 @@ function wcCard(r, i) {
     </div></div>`;
 }
 
+/* ── parlay card: reads raya_parlay_log (legs json = [{text, price, key}]) ── */
+const SPORT_LBL = { mlb_k: 'Strikeouts', wnba: 'WNBA' };
+function parlayCard(p, i) {
+  const legs = Array.isArray(p.legs) ? p.legs : [];
+  const isFD = p.book === 'fanduel';
+  const bk = isFD ? 'FanDuel' : 'DraftKings';
+  const dot = isFD ? 'bct-fd' : 'bct-dk';
+  const res = p.result ? `<span class="bct-tpx" style="color:${p.result==='win'?'var(--over)':p.result==='loss'?'var(--under)':'var(--mute)'}">${p.result.toUpperCase()} ${p.profit_units!=null?(p.profit_units>=0?'+':'')+(+p.profit_units).toFixed(2)+'u':''}</span>` : '<span class="bct-tpx bct-na">pending</span>';
+  const legHTML = legs.map(l => `<div class="bct-trow" style="margin-top:6px"><span class="bct-tln" style="font-size:17px">${esc(l.text)}</span></div>`).join('');
+  return `<div class="bct-card">
+    <div class="bct-rail"><div class="bct-rank" style="font-size:22px"><b>${p.n_legs}-LEG</b>${String(i).padStart(2,'0')}</div></div>
+    <div class="bct-main">
+      <div class="bct-name">${SPORT_LBL[p.sport] || esc(p.sport)}</div>
+      <div class="bct-match">${p.n_legs}-leg parlay &middot; ${esc(p.slate_date||'')}</div>
+      <div class="bct-bet" style="border-color:var(--acc-d);background:color-mix(in oklch,var(--acc) 9%,transparent)">
+        <span class="bct-side" style="color:var(--acc)">${fmtOdds(p.parlay_american)}</span>
+        <span class="bct-ln" style="font-size:14px;color:var(--mute)">1u &rarr; ${p.parlay_dec!=null?(+p.parlay_dec-1).toFixed(2):'--'}u</span>
+        <span class="bct-proj">${res}</span>
+      </div>
+      <div class="bct-tile bct-best"><span class="bct-ribbon">Raya Bet</span>
+        <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${bk} &middot; all legs</div>
+        ${legHTML}
+      </div>
+    </div></div>`;
+}
+function parlayRecord(rows) {
+  const g = rows.filter(r => r.result === 'win' || r.result === 'loss');
+  if (!g.length) return `<div class="bct-empty" style="padding:18px">Record builds as parlays settle (graded 6:30 AM ET).</div>`;
+  const line = (label, rs) => {
+    if (!rs.length) return '';
+    const w = rs.filter(r => r.result === 'win').length, u = rs.reduce((s, r) => s + (+r.profit_units || 0), 0);
+    return `<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 0;border-top:1px solid var(--line)"><span>${label}</span><span>${w}&ndash;${rs.length - w} &middot; <b style="color:${u>=0?'var(--over)':'var(--under)'}">${u>=0?'+':''}${u.toFixed(2)}u</b></span></div>`;
+  };
+  return `<div class="bct-tile" style="margin-top:4px"><div class="bct-tbk">Parlay record &middot; ${g.length} graded</div>
+    ${line('K 2-leg', g.filter(r => r.sport==='mlb_k' && r.n_legs===2))}
+    ${line('WNBA 2-leg', g.filter(r => r.sport==='wnba' && r.n_legs===2))}
+    ${line('WNBA 3-leg', g.filter(r => r.sport==='wnba' && r.n_legs===3))}
+    ${line('All', g)}</div>`;
+}
+
 function shell(metaTitle, metaSub, body, footL, footR) {
-  const subtabs = view === 'wc' ? `
-    <div class="subtabs">
-      <div class="subtab ${wstat==='Shots'?'on':''}" data-stat="Shots">Shots</div>
-      <div class="subtab ${wstat==='Shots On Target'?'on':''}" data-stat="Shots On Target">On Target</div>
-    </div>` : view === 'k' ? `
+  const subtabs = view === 'k' ? `
     <div class="subtabs" style="justify-content:flex-end">
       <div class="subtab ${kmode==='flat'?'on':''}" data-kmode="flat" style="flex:0 0 auto;padding:7px 16px">Flat 1u</div>
       <div class="subtab ${kmode==='kelly'?'on':''}" data-kmode="kelly" style="flex:0 0 auto;padding:7px 16px">&frac14;-Kelly</div>
@@ -440,10 +476,8 @@ function shell(metaTitle, metaSub, body, footL, footR) {
     </div>
     <div class="tabs">
       <div class="tab ${view==='k'?'on':''}" data-view="k">Strikeout</div>
-      <div class="tab ${view==='outs'?'on':''}" data-view="outs">Outs</div>
-      <div class="tab ${view==='epl'?'on':''}" data-view="epl">EPL Shots</div>
-      <div class="tab ${view==='wc'?'on':''}" data-view="wc">World Cup</div>
       <div class="tab ${view==='wnba'?'on':''}" data-view="wnba">WNBA</div>
+      <div class="tab ${view==='parlay'?'on':''}" data-view="parlay">Parlays</div>
     </div>
     ${subtabs}
     <div class="bct-list" id="list">${body}</div>
@@ -451,7 +485,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <span>${footR} &middot; <a id="signout">Sign out</a></span></div>
   </div>`;
   app.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; render(); });
-  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (t.dataset.wstat) { wnbaStat = t.dataset.wstat; } else if (view === 'wc') { wstat = t.dataset.stat; } render(); });
+  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (t.dataset.wstat) { wnbaStat = t.dataset.wstat; } render(); });
   const so = document.getElementById('signout');
   if (so) so.onclick = async () => { await sb.auth.signOut(); route(); };
 }
@@ -469,42 +503,19 @@ async function render() {
                               : '<div class="bct-empty">No picks posted yet today.</div>';
     shell('Strikeout Brief', `${dateLbl} &middot; Opening Lines`, body,
           `${picks.length} Strikeout Calls`, 'Model <b>linreg_k_v1</b>');
-  } else if (view === 'outs') {
-    const { data, error } = await sb.from('mlb_outs_brief').select('*').order('rank', { ascending: true });
-    if (error) return shell('Pitcher Outs Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
-    const picks = data || [];
-    const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
+  } else if (view === 'parlay') {
+    const { data, error } = await sb.from('raya_parlay_log').select('*').order('slate_date', { ascending: false }).order('built_at', { ascending: false }).limit(60);
+    if (error) return shell('Parlay Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
+    const rows = data || [];
+    const latest = rows[0]?.slate_date;
+    const today = rows.filter(r => r.slate_date === latest);
+    const dateLbl = latest ? new Date(latest + 'T12:00:00').toLocaleDateString('en-US',
       { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
-    const body = picks.length ? picks.map((p,idx)=>outsCard(p,idx+1)).join('')
-                              : '<div class="bct-empty">No outs picks posted yet today.</div>';
-    shell('Pitcher Outs Brief', `${dateLbl} &middot; Forward Test &middot; Opening Lines`, body,
-          `${picks.length} Outs Calls`, 'Model <b>outs-oppadj-v1</b>');
-  } else if (view === 'epl') {
-    const { data, error } = await sb.from('soccer_shots_brief').select('*').order('rank', { ascending: true });
-    if (error) return shell('EPL Shots Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
-    const picks = data || [];
-    const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
-      { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
-    const body = picks.length ? picks.map((p,idx)=>soccerCard(p,idx+1)).join('')
-                              : '<div class="bct-empty">No EPL picks posted &mdash; the shots brief resumes when the season returns.</div>';
-    shell('EPL Shots Brief', `${dateLbl} &middot; PrizePicks Lines`, body,
-          `${picks.length} Shot Calls`, 'Model <b>understat shots</b>');
-  } else if (view === 'wc') {
-    // World Cup — watch list of tracked lines (no calls; CLV-tracked on HQ)
-    const { data, error } = await sb.from('intl_shots_line_snapshots').select('*')
-      .eq('odds_type', 'standard').order('captured_at', { ascending: false }).limit(400);
-    const rows = error ? [] : (data || []);
-    const latestTs = rows.length ? rows[0].captured_at : null;
-    const board = rows.filter(r => r.captured_at === latestTs && r.stat_type === wstat)
-                      .sort((a,b) => (+b.line) - (+a.line));
-    const note = `<div class="wc-note">World Cup isn't a call board &mdash; the shots model doesn't beat the market, so there are no picks here. These are the standard lines Raya is tracking into the openers; closing-line value is graded on the HQ scoreboard.</div>`;
-    const body = board.length
-      ? note + board.map((r,idx)=>wcCard(r,idx+1)).join('')
-      : `${note}<div class="bct-empty">No standard ${wstat==='Shots'?'shot':'SOT'} lines posted yet.</div>`;
-    const dateLbl = latestTs ? new Date(latestTs).toLocaleDateString('en-US',
-      { weekday:'short', month:'short', day:'numeric' }).toUpperCase() : '';
-    shell('World Cup Watch', `${dateLbl} &middot; Lines Tracked`, body,
-          `${board.length} ${wstat==='Shots'?'Shot':'SOT'} Lines`, 'CLV &middot; <b>grades after Jun 11</b>');
+    const rec = parlayRecord(rows);
+    const body = today.length ? today.map((p,idx)=>parlayCard(p,idx+1)).join('') + rec
+                              : '<div class="bct-empty">No parlays built yet today.</div>' + rec;
+    shell('Parlay Brief', `${dateLbl} &middot; One Book &middot; Different Games`, body,
+          `${today.length} Parlays`, 'Size <b>&frac14;&ndash;&frac12;u</b>');
   } else {
     // WNBA props brief — multi-book pick board (open lines), forward-test
     let q = sb.from('wnba_props_brief').select('*').order('slate_date', { ascending: false }).order('rank', { ascending: true }).limit(120);
