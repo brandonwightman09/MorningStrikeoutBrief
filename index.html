@@ -141,7 +141,7 @@ const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
 
 let view = 'k';        // 'k' | 'wnba' | 'parlay'
 let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
-let wnbaStat = 'all';  // 'all' | 'points' | 'rebounds' | 'assists' | 'threes'
+let wnbaStat = 'place';  // 'place' (top-5 with check, default) | 'all' | 'points' | 'rebounds' | 'assists' | 'threes'
 let kmode = 'flat';    // 'flat' | 'kelly' — strikeout stake sizing; flat is the live default
 
 // Strikeout staking config (edit and redeploy to change). 1 unit = $30.
@@ -153,7 +153,7 @@ let _kStakes = {};     // computed each render: pitcher_name -> { stakeU, dollar
 // Visible build stamp — bump on each deploy. Lets you confirm at a glance which
 // markup the Home-Screen icon is actually running. Keep the version aligned with
 // the service-worker cache name in sw.js (currently 'raya-brief-v2').
-const BUILD = 'v7 / 2026-08-30';
+const BUILD = 'v7.1 / 2026-08-30';
 
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
@@ -523,7 +523,7 @@ async function render() {
     if (error) return shell('WNBA Props Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
     let picks = data || [];
     if (picks.length) { const latest = picks[0].slate_date; picks = picks.filter(p => p.slate_date === latest); }
-    if (wnbaStat === 'place') picks = picks.filter(p => p.place_flag === 1);
+    if (wnbaStat === 'place') picks = picks.filter(p => p.place_flag === 1 && p.rank <= 5);
     else if (wnbaStat !== 'all') picks = picks.filter(p => p.stat === wnbaStat);
     const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
       { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
