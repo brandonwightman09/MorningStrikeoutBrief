@@ -139,8 +139,7 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 const fmtLine = x => (x == null ? '' : (+x).toString());
 const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
 
-let view = 'k';        // 'k' | 'wnba' | 'nfl' | 'parlay'
-let nflMode = 'place';  // 'place' (check picks, default) | 'all'
+let view = 'k';        // 'k' | 'wnba' | 'parlay'
 let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
 let wnbaStat = 'place';  // 'place' (top-5 with check, default) | 'all' | 'points' | 'rebounds' | 'assists' | 'threes'
 let kmode = 'flat';    // 'flat' | 'kelly' — strikeout stake sizing; flat is the live default
@@ -154,7 +153,7 @@ let _kStakes = {};     // computed each render: pitcher_name -> { stakeU, dollar
 // Visible build stamp — bump on each deploy. Lets you confirm at a glance which
 // markup the Home-Screen icon is actually running. Keep the version aligned with
 // the service-worker cache name in sw.js (currently 'raya-brief-v2').
-const BUILD = 'v8.0 / 2026-09-26';
+const BUILD = 'v7.1 / 2026-08-30';
 
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
@@ -415,56 +414,6 @@ function wcCard(r, i) {
     </div></div>`;
 }
 
-/* ── NFL props card: reads nfl_props_brief (latest week only) + slate_date from nfl_props_brief_log ── */
-const NFL_STAT = { rush_attempts:'RUSH ATT', pass_attempts:'PASS ATT', completions:'COMP', receptions:'REC',
-                   rushing_yards:'RUSH YDS', receiving_yards:'REC YDS', passing_yards:'PASS YDS', tackles_ast:'TKL+AST',
-                   rush_rec_yards:'RUSH+REC YDS' };
-const NFL_VET = 33;   // ngames threshold for the [VET] marker (PLACE Unders on 33+ career games: 62% / +21% ROI backtest)
-function nflCard(p, i, slate) {
-  const lns = [p.dk_line, p.fd_line].filter(x => x != null);
-  const differ = lns.length > 1 && Math.max(...lns) !== Math.min(...lns);
-  const sideOver = (p.bet_side || '').toLowerCase() === 'over';
-  const unit = NFL_STAT[p.stat] || (p.stat || '').replace(/_/g,' ').toUpperCase();
-  const tile = (bk, label, dot, ln, px) => {
-    if (ln == null) return '';
-    const best = p.best_book === bk;
-    const off  = differ && !best;
-    const cls  = 'bct-tile' + (best ? ' bct-best' : '') + (off ? ' bct-off' : '');
-    const ribbon = best ? '<span class="bct-ribbon">Raya Bet</span>' : '';
-    const price = off ? '<span class="bct-tpx bct-na">off line</span>'
-                      : `<span class="bct-tpx">${fmtOdds(px)}</span>`;
-    return `<div class="${cls}">${ribbon}
-      <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${label}</div>
-      <div class="bct-trow"><span class="bct-tln">${fmtLine(ln)}</span>${price}</div></div>`;
-  };
-  const placed = p.place_flag === 1;
-  const vet = p.ngames != null && +p.ngames >= NFL_VET;
-  const chips = placed
-    ? (vet ? '<span class="bct-placechip">&#10003; Place &middot; VET</span>'
-           : '<span class="bct-placechip" style="color:var(--acc);border-color:var(--acc-d)">&#10003; Paper / &frac12;u</span>')
-    : '';
-  const dayLbl = slate ? new Date(slate + 'T12:00:00').toLocaleDateString('en-US', { weekday:'short', month:'numeric', day:'numeric' }).toUpperCase() : '';
-  const done = slate && slate < _todayET();
-  return `<div class="bct-card${placed?' bct-placed':''}"${done?' style="opacity:.5"':''}>
-    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
-    <div class="bct-main">
-      <div class="bct-name">${esc(p.player_name)}</div>
-      <div class="bct-match">${esc(unit)}${dayLbl?` &middot; ${dayLbl}`:''}${p.ngames!=null?` &middot; ${p.ngames}G`:''}${chips}</div>
-      <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
-        <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
-        <span class="bct-ln">${fmtLine(p.book_line)}</span>
-        <span class="bct-proj">PROJ <b>${p.raya_projected!=null?(+p.raya_projected).toFixed(1):'--'}</b></span>
-      </div>
-      <div class="bct-tiles">
-        ${tile('draftkings','DraftKings','bct-dk',p.dk_line,p.dk_price)}
-        ${tile('fanduel','FanDuel','bct-fd',p.fd_line,p.fd_price)}
-      </div>
-    </div></div>`;
-}
-function _todayET() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-}
-
 /* ── parlay card: reads raya_parlay_log (legs json = [{text, price, key}]) ── */
 const SPORT_LBL = { mlb_k: 'Strikeouts', wnba: 'WNBA' };
 function parlayCard(p, i) {
@@ -518,10 +467,6 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <div class="subtab ${wnbaStat==='rebounds'?'on':''}" data-wstat="rebounds">Reb</div>
       <div class="subtab ${wnbaStat==='assists'?'on':''}" data-wstat="assists">Ast</div>
       <div class="subtab ${wnbaStat==='threes'?'on':''}" data-wstat="threes">3PM</div>
-    </div>` : view === 'nfl' ? `
-    <div class="subtabs">
-      <div class="subtab ${nflMode==='place'?'on':''}" data-nfl="place">&#10003; Place</div>
-      <div class="subtab ${nflMode==='all'?'on':''}" data-nfl="all">All</div>
     </div>` : '';
   app.innerHTML = `<div class="bct">
     <div class="bct-hdr">
@@ -532,7 +477,6 @@ function shell(metaTitle, metaSub, body, footL, footR) {
     <div class="tabs">
       <div class="tab ${view==='k'?'on':''}" data-view="k">Strikeout</div>
       <div class="tab ${view==='wnba'?'on':''}" data-view="wnba">WNBA</div>
-      <div class="tab ${view==='nfl'?'on':''}" data-view="nfl">NFL</div>
       <div class="tab ${view==='parlay'?'on':''}" data-view="parlay">Parlays</div>
     </div>
     ${subtabs}
@@ -541,7 +485,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <span>${footR} &middot; <a id="signout">Sign out</a></span></div>
   </div>`;
   app.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; render(); });
-  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (t.dataset.wstat) { wnbaStat = t.dataset.wstat; } else if (t.dataset.nfl) { nflMode = t.dataset.nfl; } render(); });
+  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (t.dataset.wstat) { wnbaStat = t.dataset.wstat; } render(); });
   const so = document.getElementById('signout');
   if (so) so.onclick = async () => { await sb.auth.signOut(); route(); };
 }
@@ -572,28 +516,6 @@ async function render() {
                               : '<div class="bct-empty">No parlays built yet today.</div>' + rec;
     shell('Parlay Brief', `${dateLbl} &middot; One Book &middot; Different Games`, body,
           `${today.length} Parlays`, 'Size <b>&frac14;&ndash;&frac12;u</b>');
-  } else if (view === 'nfl') {
-    // NFL props brief — latest week only (display table can carry stale weeks), slate_date joined from the log
-    const [{ data, error }, { data: lg }] = await Promise.all([
-      sb.from('nfl_props_brief').select('*').order('week', { ascending: false }).order('rank', { ascending: true }).limit(200),
-      sb.from('nfl_props_brief_log').select('week,slate_date,player,stat,bet_side,line').order('week', { ascending: false }).limit(400)
-    ]);
-    if (error) return shell('NFL Props Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
-    let picks = data || [];
-    const week = picks.length ? picks[0].week : null;
-    picks = picks.filter(p => p.week === week);
-    const slateOf = {};
-    (lg || []).filter(r => r.week === week).forEach(r => { slateOf[r.player + '|' + r.stat + '|' + r.bet_side] = r.slate_date; });
-    picks.forEach(p => { p._slate = slateOf[p.player_name + '|' + p.stat + '|' + p.bet_side] || null; });
-    // played games sink to the bottom, otherwise brief rank
-    picks.sort((a, b) => ((a._slate && a._slate < _todayET()) - (b._slate && b._slate < _todayET())) || (a.rank - b.rank));
-    if (nflMode === 'place') picks = picks.filter(p => p.place_flag === 1);
-    const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
-      { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
-    const body = picks.length ? picks.map((p,idx)=>nflCard(p,idx+1,p._slate)).join('')
-                              : `<div class="bct-empty">${nflMode==='place'?'No &#10003; picks this week.':'No NFL picks posted yet this week.'}</div>`;
-    shell('NFL Props Brief', `${week?`WEEK ${week} &middot; `:''}${dateLbl} &middot; DK/FD Lines`, body,
-          `${picks.length} NFL Calls`, 'Model <b>ewma16 &middot; Under-only &#10003;</b>');
   } else {
     // WNBA props brief — multi-book pick board (open lines), forward-test
     let q = sb.from('wnba_props_brief').select('*').order('slate_date', { ascending: false }).order('rank', { ascending: true }).limit(120);
