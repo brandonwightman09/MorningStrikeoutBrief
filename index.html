@@ -54,7 +54,7 @@
 
   /* ── tabs (added) ─────────────────────────── */
   .tabs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
-  .tab{flex:1 1 calc(50% - 4px);text-align:center;background:var(--tile);border:1px solid var(--line);border-radius:11px;padding:10px;
+  .tab{flex:1 1 calc(33.333% - 5px);text-align:center;background:var(--tile);border:1px solid var(--line);border-radius:11px;padding:10px;
     font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.07em;text-transform:uppercase;
     color:var(--mute);cursor:pointer}
   .tab.on{background:var(--acc);color:oklch(0.165 0.012 72);border-color:var(--acc)}
@@ -140,6 +140,7 @@ const fmtLine = x => (x == null ? '' : (+x).toString());
 const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
 
 let view = 'k';        // 'k' | 'wnba' | 'nfl' | 'parlay'
+let edgeMode = 'live';  // 'live' (my books, upcoming) | 'all' (every book) | 'results'
 let nflMode = 'place';  // 'place' (check picks, default) | 'all'
 let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
 let wnbaStat = 'place';  // 'place' (top-5 with check, default) | 'all' | 'points' | 'rebounds' | 'assists' | 'threes'
@@ -154,7 +155,7 @@ let _kStakes = {};     // computed each render: pitcher_name -> { stakeU, dollar
 // Visible build stamp — bump on each deploy. Lets you confirm at a glance which
 // markup the Home-Screen icon is actually running. Keep the version aligned with
 // the service-worker cache name in sw.js (currently 'raya-brief-v2').
-const BUILD = 'v8.0 / 2026-09-26';
+const BUILD = 'v8.1 / 2026-10-03';
 
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
@@ -465,6 +466,83 @@ function _todayET() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
+/* ── Raya Edge: sharp-vs-soft price flags (edge_picks view = one row per selection) + paper scoreboard ── */
+const EDGE_MKT = { player_shots:'SOG', player_blocks:'BLK', rushing_yards:'RUSH YDS', receiving_yards:'REC YDS', passing_yards:'PASS YDS',
+                   rushing_attempts:'RUSH ATT', passing_attempts:'PASS ATT', receptions:'REC', completions:'COMP',
+                   player_rebounds:'REB', player_assists:'AST', player_points:'PTS', handicap:'SPREAD', spread:'SPREAD',
+                   totals:'TOTAL', total:'TOTAL', moneyline:'ML' };
+const EDGE_BOOK = { draftkings:['DraftKings','bct-dk'], fanduel:['FanDuel','bct-fd'], betmgm:['BetMGM','bct-mgm'], hardrock:['Hard Rock','bct-hr'],
+                    caesars:['Caesars','bct-pp'], thescore:['theScore','bct-pp'] };
+const edgeMkt = m => EDGE_MKT[m] || String(m || '').replace(/_/g, ' ').toUpperCase();
+const edgePct = (x, d = 1) => x == null ? '--' : ((+x >= 0 ? '+' : '') + (+x * 100).toFixed(d) + '%');
+function edgeWhen(iso) {
+  const d = new Date(iso); if (isNaN(d)) return '';
+  const mins = Math.round((d - Date.now()) / 60000);
+  const t = d.toLocaleString('en-US', { weekday:'short', hour:'numeric', minute:'2-digit', timeZone:'America/New_York' }).toUpperCase();
+  return mins > 0 && mins < 180 ? `${t} &middot; ${mins}M` : t;
+}
+function edgeBet(p) {
+  const lv = String(p.line_value || ''), m = lv.match(/^(Over|Under)\s+([\-\d.]+)/i);
+  const team = /handicap|spread|moneyline/.test(p.market || '');
+  if (m) return { side: m[1].toUpperCase(), ln: m[2], over: m[1].toLowerCase() === 'over', name: team || /^(over|under)$/i.test(p.participant || '') ? p.matchup : p.participant };
+  if (p.market === 'moneyline') return { side: 'ML', ln: '', over: true, name: p.participant };
+  return { side: lv, ln: '', over: !lv.startsWith('-'), name: p.participant };
+}
+function edgeCard(p, i) {
+  const b = edgeBet(p), bk = EDGE_BOOK[p.book] || [p.book, 'bct-pp'];
+  const gone = p.active !== 1;
+  const px = p.price != null ? p.price : p.first_price;
+  const refLn = p.ref_line || (b.ln ? `${b.side[0]}${b.ln}` : b.side);
+  const more = p.n_books > 1 ? ` &middot; ${p.n_books} books` : '';
+  return `<div class="bct-card"${gone ? ' style="opacity:.5"' : ''}>
+    <div class="bct-rail"><div class="bct-rank"><b>${esc(p.sport || '')}</b>${String(i).padStart(2,'0')}</div></div>
+    <div class="bct-main">
+      <div class="bct-name" style="font-size:22px">${esc(b.name || p.matchup || '')}</div>
+      <div class="bct-match">${esc(edgeMkt(p.market))} &middot; ${esc(p.matchup || '')} &middot; ${edgeWhen(p.event_start)}<span class="bct-placechip" style="color:var(--acc);border-color:var(--acc-d)">Paper</span></div>
+      <div class="bct-bet ${b.over ? 'bct-over' : 'bct-under'}">
+        <span class="bct-side">${esc(b.side)}</span>
+        <span class="bct-ln">${esc(b.ln)}</span>
+        <span class="bct-proj">EDGE <b>${edgePct(p.ev)}</b></span>
+      </div>
+      <div class="bct-tiles">
+        <div class="bct-tile bct-best"><span class="bct-ribbon">${gone ? 'Gone' : 'Flag'}</span>
+          <div class="bct-tbk"><span class="bct-tdot ${bk[1]}"></span>${esc(bk[0])}</div>
+          <div class="bct-trow"><span class="bct-tln">${fmtOdds(px)}</span></div></div>
+        <div class="bct-tile">
+          <div class="bct-tbk"><span class="bct-tdot bct-dk"></span>${esc(p.ref_source || 'sharp')}</div>
+          <div class="bct-trow"><span class="bct-tln" style="font-size:19px">${esc(refLn)}</span><span class="bct-tpx">${fmtOdds(p.ref_price)}</span></div></div>
+      </div>
+      <div class="bct-cmeta">Fair <b>${p.fair_prob != null ? Math.round(+p.fair_prob * 100) + '%' : '--'}</b> &middot; seen ${p.seen_n || 1}x${more}${gone ? ' &middot; <b>price moved</b>' : ''}</div>
+    </div></div>`;
+}
+function edgeBoard(rows) {
+  const SP = ['NHL', 'NFL', 'NCAAF', 'NBA', 'MLB'];
+  const mine = rows.filter(r => r.bettable).sort((a, b) => SP.indexOf(a.sport) - SP.indexOf(b.sport));
+  const cell = 'font-family:\'JetBrains Mono\',monospace;font-size:11px';
+  const line = r => {
+    const u = +r.units || 0, graded = (+r.wins || 0) + (+r.losses || 0);
+    const clv = r.clv_n ? `${(+r.avg_clv * 100 >= 0 ? '+' : '')}${(+r.avg_clv * 100).toFixed(2)} pts <span style="color:var(--faint)">n=${r.clv_n}</span>` : '<span style="color:var(--faint)">no CLV yet</span>';
+    return `<div style="display:flex;justify-content:space-between;gap:8px;${cell};padding:6px 0;border-top:1px solid var(--line)">
+      <span><b style="color:var(--ink)">${esc(r.sport)}</b> ${graded ? `${r.wins || 0}&ndash;${r.losses || 0}` : `${r.picks} open`} &middot; <b style="color:${u >= 0 ? 'var(--over)' : 'var(--under)'}">${u >= 0 ? '+' : ''}${u.toFixed(2)}u</b></span>
+      <span>CLV ${clv}</span></div>`;
+  };
+  const tot = mine.reduce((a, r) => ({ w: a.w + (+r.wins || 0), l: a.l + (+r.losses || 0), u: a.u + (+r.units || 0), n: a.n + (+r.picks || 0) }), { w: 0, l: 0, u: 0, n: 0 });
+  return `<div class="wc-note"><b style="color:var(--acc)">PAPER ONLY.</b> Gate before any unit: 3 weeks of positive average CLV and a winning graded record. CLV clock restarted 10/2 &rarr; verdict ~10/23.</div>
+    <div class="bct-tile"><div class="bct-tbk">My books &middot; ${tot.n} picks &middot; ${tot.w}&ndash;${tot.l} &middot; ${tot.u >= 0 ? '+' : ''}${tot.u.toFixed(2)}u</div>
+    ${mine.map(line).join('') || '<div style="padding:8px 0;color:var(--mute)">Nothing graded yet.</div>'}</div>`;
+}
+function edgeResultRow(p) {
+  const b = edgeBet(p), bk = (EDGE_BOOK[p.book] || [p.book])[0];
+  const col = p.result === 'win' ? 'var(--over)' : p.result === 'loss' ? 'var(--under)' : 'var(--mute)';
+  const u = p.profit != null ? `${+p.profit >= 0 ? '+' : ''}${(+p.profit).toFixed(2)}u` : '';
+  const clv = p.clv != null ? ` &middot; CLV ${(+p.clv * 100 >= 0 ? '+' : '')}${(+p.clv * 100).toFixed(1)}` : '';
+  return `<div class="bct-tile" style="padding:8px 11px">
+    <div style="display:flex;justify-content:space-between;gap:8px;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:16px;text-transform:uppercase">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.name || '')} ${esc(b.side)} ${esc(b.ln)}</span>
+      <span style="color:${col};flex:0 0 auto">${esc((p.result || '').toUpperCase())} ${u}</span></div>
+    <div class="bct-cmeta" style="margin-top:3px">${esc(p.sport)} ${esc(edgeMkt(p.market))} &middot; ${esc(bk)} ${fmtOdds(p.first_price != null ? p.first_price : p.price)}${p.actual != null ? ` &middot; actual ${+p.actual}` : ''}${clv}</div></div>`;
+}
+
 /* ── parlay card: reads raya_parlay_log (legs json = [{text, price, key}]) ── */
 const SPORT_LBL = { mlb_k: 'Strikeouts', wnba: 'WNBA' };
 function parlayCard(p, i) {
@@ -522,6 +600,11 @@ function shell(metaTitle, metaSub, body, footL, footR) {
     <div class="subtabs">
       <div class="subtab ${nflMode==='place'?'on':''}" data-nfl="place">&#10003; Place</div>
       <div class="subtab ${nflMode==='all'?'on':''}" data-nfl="all">All</div>
+    </div>` : view === 'edge' ? `
+    <div class="subtabs">
+      <div class="subtab ${edgeMode==='live'?'on':''}" data-edge="live">My Books</div>
+      <div class="subtab ${edgeMode==='all'?'on':''}" data-edge="all">All Books</div>
+      <div class="subtab ${edgeMode==='results'?'on':''}" data-edge="results">Results</div>
     </div>` : '';
   app.innerHTML = `<div class="bct">
     <div class="bct-hdr">
@@ -534,6 +617,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <div class="tab ${view==='wnba'?'on':''}" data-view="wnba">WNBA</div>
       <div class="tab ${view==='nfl'?'on':''}" data-view="nfl">NFL</div>
       <div class="tab ${view==='parlay'?'on':''}" data-view="parlay">Parlays</div>
+      <div class="tab ${view==='edge'?'on':''}" data-view="edge">Edge</div>
     </div>
     ${subtabs}
     <div class="bct-list" id="list">${body}</div>
@@ -541,7 +625,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <span>${footR} &middot; <a id="signout">Sign out</a></span></div>
   </div>`;
   app.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; render(); });
-  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (t.dataset.wstat) { wnbaStat = t.dataset.wstat; } else if (t.dataset.nfl) { nflMode = t.dataset.nfl; } render(); });
+  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (t.dataset.wstat) { wnbaStat = t.dataset.wstat; } else if (t.dataset.nfl) { nflMode = t.dataset.nfl; } else if (t.dataset.edge) { edgeMode = t.dataset.edge; } render(); });
   const so = document.getElementById('signout');
   if (so) so.onclick = async () => { await sb.auth.signOut(); route(); };
 }
@@ -594,6 +678,26 @@ async function render() {
                               : `<div class="bct-empty">${nflMode==='place'?'No &#10003; picks this week.':'No NFL picks posted yet this week.'}</div>`;
     shell('NFL Props Brief', `${week?`WEEK ${week} &middot; `:''}${dateLbl} &middot; DK/FD Lines`, body,
           `${picks.length} NFL Calls`, 'Model <b>ewma16 &middot; Under-only &#10003;</b>');
+  } else if (view === 'edge') {
+    if (edgeMode === 'results') {
+      const [{ data: sbd, error }, { data: rec }] = await Promise.all([
+        sb.from('edge_scoreboard').select('*'),
+        sb.from('edge_picks').select('*').eq('bettable', true).not('result', 'is', null).order('event_start', { ascending: false }).limit(40)
+      ]);
+      if (error) return shell('Raya Edge','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
+      const body = edgeBoard(sbd || []) + ((rec || []).length ? (rec || []).map(edgeResultRow).join('') : '<div class="bct-empty" style="padding:18px">No graded flags yet.</div>');
+      return shell('Raya Edge', 'Paper Scoreboard &middot; My Books', body, `${(rec || []).length} Recent`, 'Ref <b>Pinnacle</b>');
+    }
+    const { data, error } = await sb.from('edge_picks').select('*').gt('event_start', new Date().toISOString().slice(0, 19) + 'Z').order('ev', { ascending: false }).limit(150);
+    if (error) return shell('Raya Edge','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
+    let picks = data || [];
+    if (edgeMode === 'live') picks = picks.filter(p => p.bettable);
+    picks.sort((a, b) => ((a.active !== 1) - (b.active !== 1)) || (b.ev - a.ev));
+    const live = picks.filter(p => p.active === 1).length;
+    const body = picks.length ? picks.map((p, idx) => edgeCard(p, idx + 1)).join('')
+                              : '<div class="bct-empty">No live flags right now.<br><span style="font-size:12px">Games are scanned inside 6&ndash;8 hours of start.</span></div>';
+    shell('Raya Edge', `Sharp vs Soft &middot; ${edgeMode === 'live' ? 'DK / FD / MGM / Hard Rock' : 'All Books'}`, body,
+          `${live} Live Flags`, 'Paper <b>gate not passed</b>');
   } else {
     // WNBA props brief — multi-book pick board (open lines), forward-test
     let q = sb.from('wnba_props_brief').select('*').order('slate_date', { ascending: false }).order('rank', { ascending: true }).limit(120);
