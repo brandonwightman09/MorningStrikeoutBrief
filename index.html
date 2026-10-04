@@ -155,7 +155,7 @@ let _kStakes = {};     // computed each render: pitcher_name -> { stakeU, dollar
 // Visible build stamp — bump on each deploy. Lets you confirm at a glance which
 // markup the Home-Screen icon is actually running. Keep the version aligned with
 // the service-worker cache name in sw.js (currently 'raya-brief-v2').
-const BUILD = 'v8.1 / 2026-10-03';
+const BUILD = 'v8.2 / 2026-10-04';
 
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
@@ -544,11 +544,11 @@ function edgeResultRow(p) {
 }
 
 /* ── parlay card: reads raya_parlay_log (legs json = [{text, price, key}]) ── */
-const SPORT_LBL = { mlb_k: 'Strikeouts', wnba: 'WNBA' };
+const SPORT_LBL = { mlb_k: 'Strikeouts', wnba: 'WNBA', nfl: 'NFL' };
 function parlayCard(p, i) {
   const legs = Array.isArray(p.legs) ? p.legs : [];
   const isFD = p.book === 'fanduel';
-  const bk = isFD ? 'FanDuel' : 'DraftKings';
+  const bk = isFD ? 'FanDuel' : p.book === 'betmgm' ? 'BetMGM' : 'DraftKings';
   const dot = isFD ? 'bct-fd' : 'bct-dk';
   const res = p.result ? `<span class="bct-tpx" style="color:${p.result==='win'?'var(--over)':p.result==='loss'?'var(--under)':'var(--mute)'}">${p.result.toUpperCase()} ${p.profit_units!=null?(p.profit_units>=0?'+':'')+(+p.profit_units).toFixed(2)+'u':''}</span>` : '<span class="bct-tpx bct-na">pending</span>';
   const legHTML = legs.map(l => `<div class="bct-trow" style="margin-top:6px"><span class="bct-tln" style="font-size:17px">${esc(l.text)}</span></div>`).join('');
@@ -580,6 +580,7 @@ function parlayRecord(rows) {
     ${line('K 2-leg', g.filter(r => r.sport==='mlb_k' && r.n_legs===2))}
     ${line('WNBA 2-leg', g.filter(r => r.sport==='wnba' && r.n_legs===2))}
     ${line('WNBA 3-leg', g.filter(r => r.sport==='wnba' && r.n_legs===3))}
+    ${line('NFL 2-leg', g.filter(r => r.sport==='nfl' && r.n_legs===2))}
     ${line('All', g)}</div>`;
 }
 
@@ -674,8 +675,17 @@ async function render() {
     if (nflMode === 'place') picks = picks.filter(p => p.place_flag === 1);
     const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
       { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
-    const body = picks.length ? picks.map((p,idx)=>nflCard(p,idx+1,p._slate)).join('')
+    let body = picks.length ? picks.map((p,idx)=>nflCard(p,idx+1,p._slate)).join('')
                               : `<div class="bct-empty">${nflMode==='place'?'No &#10003; picks this week.':'No NFL picks posted yet this week.'}</div>`;
+    // recommended parlay: top two check picks from different games (built by raya_nfl_parlay_live.py)
+    if (nflMode === 'place') {
+      const { data: npl } = await sb.from('raya_parlay_log').select('*').eq('sport', 'nfl').order('built_at', { ascending: false }).limit(40);
+      const nrec = (npl || []).find(r => !r.result);
+      const ng = (npl || []).filter(r => r.result === 'win' || r.result === 'loss');
+      const hdr = t => `<div class="bct-tbk" style="padding:12px 4px 6px;letter-spacing:.08em">${t}</div>`;
+      const recLine = ng.length ? `<div class="bct-cmeta" style="padding:0 4px 8px">Parlay record ${ng.filter(r => r.result === 'win').length}&ndash;${ng.filter(r => r.result === 'loss').length} &middot; ${(ng.reduce((s, r) => s + (+r.profit_units || 0), 0) >= 0 ? '+' : '') + ng.reduce((s, r) => s + (+r.profit_units || 0), 0).toFixed(2)}u</div>` : '';
+      if (nrec) body = hdr('RECOMMENDED PARLAY &middot; TOP TWO &middot; DIFFERENT GAMES') + parlayCard(nrec, 1) + recLine + hdr('SINGLES') + body;
+    }
     shell('NFL Props Brief', `${week?`WEEK ${week} &middot; `:''}${dateLbl} &middot; DK/FD Lines`, body,
           `${picks.length} NFL Calls`, 'Model <b>ewma16 &middot; Under-only &#10003;</b>');
   } else if (view === 'edge') {
