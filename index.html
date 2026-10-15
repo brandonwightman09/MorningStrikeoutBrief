@@ -96,6 +96,14 @@
   .bct-tpx.bct-na{color:var(--faint)}
   .bct-ribbon{position:absolute;top:0;right:0;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--bg);background:var(--acc);padding:2px 8px;border-bottom-left-radius:8px}
   .bct-placed{border-color:var(--over)}
+  .bct-betbtn{margin-left:auto;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:.14em;text-transform:uppercase;background:transparent;color:var(--acc);border:1px solid var(--acc-d);border-radius:7px;padding:4px 10px;cursor:pointer}
+  .bct-betbtn.done{color:var(--over);border-color:var(--over);cursor:default}
+  .betform{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;margin-top:8px}
+  .betform input,.betform select{width:100%;background:var(--tile);border:1px solid var(--line);border-radius:8px;padding:7px 8px;color:inherit;font:inherit;font-size:13px}
+  .betform button{background:var(--acc);color:oklch(0.165 0.012 72);border:none;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer}
+  .betrow{display:flex;align-items:center;gap:6px;margin-top:8px}
+  .betrow .res{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--line);border-radius:7px;padding:4px 9px;cursor:pointer;background:transparent;color:var(--mute)}
+  .betrow .res.w{color:var(--over);border-color:var(--over)}.betrow .res.l{color:var(--under);border-color:var(--under)}
   .bct-placechip{display:inline-flex;align-items:center;gap:4px;margin-left:8px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--over);border:1px solid var(--over);border-radius:6px;padding:1px 6px;vertical-align:middle}
   .bct-foot{display:flex;align-items:center;justify-content:space-between;margin-top:18px;padding-top:13px;border-top:2px solid var(--line);font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
   .bct-foot b{color:var(--acc-d);font-weight:600}
@@ -142,7 +150,7 @@ const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
 let view = 'k';        // 'k' | 'wnba' | 'nfl' | 'parlay'
 let nhlMode = 'best';   // 'best' (early + one book, default) | 'all' | 'results'
 let edgeMode = 'live';  // 'live' (my books, upcoming) | 'all' (every book) | 'results'
-let nflMode = 'place';  // 'place' (check picks, default) | 'all'
+let nflMode = 'place';  // 'place' (check picks, default) | 'overs' (named OVERS rule) | 'all'
 let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
 let wnbaStat = 'place';  // 'place' (top-5 with check, default) | 'all' | 'points' | 'rebounds' | 'assists' | 'threes'
 let kmode = 'flat';    // 'flat' | 'kelly' — strikeout stake sizing; flat is the live default
@@ -156,7 +164,7 @@ let _kStakes = {};     // computed each render: pitcher_name -> { stakeU, dollar
 // Visible build stamp — bump on each deploy. Lets you confirm at a glance which
 // markup the Home-Screen icon is actually running. Keep the version aligned with
 // the service-worker cache name in sw.js (currently 'raya-brief-v2').
-const BUILD = 'v8.3 / 2026-10-09';
+const BUILD = 'v8.4 / 2026-10-15';
 
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
@@ -417,6 +425,50 @@ function wcCard(r, i) {
     </div></div>`;
 }
 
+/* ── Real-bet log: "Bet" button on a card -> inline form -> raya_bets row (graded nightly by raya_bets_grade.py) ── */
+const _bets = {};
+let _betSeq = 0;
+const BET_BOOKS = [['draftkings','DraftKings'],['fanduel','FanDuel'],['hardrock','Hard Rock'],['betmgm','BetMGM'],['caesars','Caesars'],['other','Other']];
+function betBtn(payload) {
+  const id = ++_betSeq; _bets[id] = payload;
+  return `<div class="betrow" data-betrow="${id}"><button class="bct-betbtn" data-bet="${id}">Bet</button></div>`;
+}
+function betForm(id) {
+  const p = _bets[id];
+  const opts = BET_BOOKS.map(([k, l]) => `<option value="${k}"${k === (p.book || '') ? ' selected' : ''}>${l}</option>`).join('');
+  return `<div class="betform" data-betform="${id}">
+    <select name="book">${opts}</select>
+    <input name="price" type="number" step="1" value="${p.price != null ? p.price : ''}" placeholder="price">
+    <input name="stake" type="number" step="0.25" min="0.25" value="1" placeholder="units">
+    <button data-betsave="${id}">Save</button></div>`;
+}
+const decOdds = a => a > 0 ? 1 + a / 100 : 1 + 100 / Math.abs(a);
+const betProfit = (res, price, stake) => res === 'win' ? +(stake * (decOdds(price) - 1)).toFixed(3) : res === 'loss' ? -stake : 0;
+function wireBets(root) {
+  root.querySelectorAll('[data-bet]').forEach(b => b.onclick = () => {
+    const id = b.dataset.bet, row = root.querySelector(`[data-betrow="${id}"]`);
+    if (row.querySelector('.betform')) { row.querySelector('.betform').remove(); return; }
+    row.insertAdjacentHTML('beforeend', betForm(id));
+    row.querySelector(`[data-betsave="${id}"]`).onclick = async () => {
+      const f = row.querySelector('.betform'), p = _bets[id];
+      const price = parseInt(f.querySelector('[name=price]').value, 10), stake = parseFloat(f.querySelector('[name=stake]').value);
+      if (!price || !stake) return;
+      const rec = { ...p, book: f.querySelector('[name=book]').value, price, stake };
+      delete rec._label;
+      const { error } = await sb.from('raya_bets').insert(rec);
+      if (error) { b.textContent = 'Error'; console.error(error); return; }
+      f.remove(); b.textContent = `Logged ${stake}u @ ${fmtOdds(price)}`; b.classList.add('done'); b.onclick = null;
+    };
+  });
+  root.querySelectorAll('[data-res]').forEach(x => x.onclick = async () => {
+    const [bid, res] = x.dataset.res.split(':'); const r = _bets['row' + bid]; if (!r) return;
+    const upd = { result: res, profit_units: betProfit(res, r.price, +r.stake), graded_at: new Date().toISOString() };
+    const { error } = await sb.from('raya_bets').update(upd).eq('id', +bid);
+    if (!error) render();
+  });
+}
+const todayETd = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
 /* ── NFL props card: reads nfl_props_brief (latest week only) + slate_date from nfl_props_brief_log ── */
 const NFL_STAT = { rush_attempts:'RUSH ATT', pass_attempts:'PASS ATT', completions:'COMP', receptions:'REC',
                    rushing_yards:'RUSH YDS', receiving_yards:'REC YDS', passing_yards:'PASS YDS', tackles_ast:'TKL+AST',
@@ -441,10 +493,10 @@ function nflCard(p, i, slate) {
   };
   const placed = p.place_flag === 1;
   const vet = p.ngames != null && +p.ngames >= NFL_VET;
-  const chips = placed
+  const chips = (placed
     ? (vet ? '<span class="bct-placechip">&#10003; Place &middot; VET</span>'
            : '<span class="bct-placechip" style="color:var(--acc);border-color:var(--acc-d)">&#10003; Paper / &frac12;u</span>')
-    : '';
+    : '') + (p.overs_flag === 1 ? `<span class="bct-placechip" style="color:var(--over);border-color:var(--over)">&#9650; Overs${vet ? ' &middot; VET' : ''}</span>` : '');
   const dayLbl = slate ? new Date(slate + 'T12:00:00').toLocaleDateString('en-US', { weekday:'short', month:'numeric', day:'numeric' }).toUpperCase() : '';
   const done = slate && slate < _todayET();
   return `<div class="bct-card${placed?' bct-placed':''}"${done?' style="opacity:.5"':''}>
@@ -461,6 +513,9 @@ function nflCard(p, i, slate) {
         ${tile('draftkings','DraftKings','bct-dk',p.dk_line,p.dk_price)}
         ${tile('fanduel','FanDuel','bct-fd',p.fd_line,p.fd_price)}
       </div>
+      ${done ? '' : betBtn({ sport: 'nfl', source: 'nfl_brief', source_id: p._logid || null, rule: p.overs_flag === 1 ? 'nfl_overs' : (placed ? 'nfl_place' : 'nfl_other'),
+                 slate_date: slate || null, event_id: null, matchup: null, player: p.player_name, market: p.stat, side: p.bet_side, line: p.book_line,
+                 book: p.best_book, price: p.best_price })}
     </div></div>`;
 }
 function _todayET() {
@@ -514,6 +569,10 @@ function edgeCard(p, i, chip) {
           <div class="bct-trow"><span class="bct-tln" style="font-size:19px">${esc(refLn)}</span><span class="bct-tpx">${fmtOdds(p.ref_price)}</span></div></div>
       </div>
       <div class="bct-cmeta">Fair <b>${p.fair_prob != null ? Math.round(+p.fair_prob * 100) + '%' : '--'}</b> &middot; seen ${p.seen_n || 1}x${more}${gone ? ' &middot; <b>price moved</b>' : ''}</div>
+      ${betBtn({ sport: (p.sport || '').toLowerCase(), source: 'edge', source_id: p.flag_id || null,
+                 rule: (p.sport === 'NHL' && p.market === 'player_shots' && p.book === 'hardrock') ? 'edge_hr_shots' : 'edge',
+                 slate_date: p.event_start ? String(p.event_start).slice(0, 10) : null, event_id: p.event_id || null, matchup: p.matchup || null,
+                 player: b.name || null, market: p.market, side: b.side, line: b.ln ? +b.ln : null, book: p.book, price: px })}
     </div></div>`;
 }
 function edgeBoard(rows) {
@@ -590,6 +649,8 @@ function parlayCard(p, i) {
         <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${bk} &middot; all legs</div>
         ${legHTML}
       </div>
+      ${p.result ? '' : betBtn({ sport: p.sport, source: 'parlay', source_id: p.id || null, rule: 'parlay_' + p.n_legs + 'leg', slate_date: p.slate_date || null,
+                 player: legs.map(l => l.text).join(' + '), market: 'parlay', side: null, line: null, book: p.book, price: p.parlay_american })}
     </div></div>`;
 }
 function parlayRecord(rows) {
@@ -624,6 +685,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
     </div>` : view === 'nfl' ? `
     <div class="subtabs">
       <div class="subtab ${nflMode==='place'?'on':''}" data-nfl="place">&#10003; Place</div>
+      <div class="subtab ${nflMode==='overs'?'on':''}" data-nfl="overs">&#9650; Overs</div>
       <div class="subtab ${nflMode==='all'?'on':''}" data-nfl="all">All</div>
     </div>` : view === 'nhl' ? `
     <div class="subtabs">
@@ -649,6 +711,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <div class="tab ${view==='nhl'?'on':''}" data-view="nhl">NHL</div>
       <div class="tab ${view==='parlay'?'on':''}" data-view="parlay">Parlays</div>
       <div class="tab ${view==='edge'?'on':''}" data-view="edge">Edge</div>
+      <div class="tab ${view==='bets'?'on':''}" data-view="bets">Bets</div>
     </div>
     ${subtabs}
     <div class="bct-list" id="list">${body}</div>
@@ -659,6 +722,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
   app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (t.dataset.wstat) { wnbaStat = t.dataset.wstat; } else if (t.dataset.nfl) { nflMode = t.dataset.nfl; } else if (t.dataset.nhl) { nhlMode = t.dataset.nhl; } else if (t.dataset.edge) { edgeMode = t.dataset.edge; } render(); });
   const so = document.getElementById('signout');
   if (so) so.onclick = async () => { await sb.auth.signOut(); route(); };
+  wireBets(app);
 }
 
 async function render() {
@@ -691,22 +755,24 @@ async function render() {
     // NFL props brief — latest week only (display table can carry stale weeks), slate_date joined from the log
     const [{ data, error }, { data: lg }] = await Promise.all([
       sb.from('nfl_props_brief').select('*').order('week', { ascending: false }).order('rank', { ascending: true }).limit(200),
-      sb.from('nfl_props_brief_log').select('week,slate_date,player,stat,bet_side,line').order('week', { ascending: false }).limit(400)
+      sb.from('nfl_props_brief_log').select('id,week,slate_date,player,stat,bet_side,line').order('week', { ascending: false }).limit(400)
     ]);
     if (error) return shell('NFL Props Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
     let picks = data || [];
     const week = picks.length ? picks[0].week : null;
     picks = picks.filter(p => p.week === week);
     const slateOf = {};
-    (lg || []).filter(r => r.week === week).forEach(r => { slateOf[r.player + '|' + r.stat + '|' + r.bet_side] = r.slate_date; });
-    picks.forEach(p => { p._slate = slateOf[p.player_name + '|' + p.stat + '|' + p.bet_side] || null; });
+    const idOf = {};
+    (lg || []).filter(r => r.week === week).forEach(r => { const k = r.player + '|' + r.stat + '|' + r.bet_side; slateOf[k] = r.slate_date; idOf[k] = r.id; });
+    picks.forEach(p => { const k = p.player_name + '|' + p.stat + '|' + p.bet_side; p._slate = slateOf[k] || null; p._logid = idOf[k] || null; });
     // played games sink to the bottom, otherwise brief rank
     picks.sort((a, b) => ((a._slate && a._slate < _todayET()) - (b._slate && b._slate < _todayET())) || (a.rank - b.rank));
     if (nflMode === 'place') picks = picks.filter(p => p.place_flag === 1);
+    else if (nflMode === 'overs') picks = picks.filter(p => p.overs_flag === 1);
     const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
       { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
     let body = picks.length ? picks.map((p,idx)=>nflCard(p,idx+1,p._slate)).join('')
-                              : `<div class="bct-empty">${nflMode==='place'?'No &#10003; picks this week.':'No NFL picks posted yet this week.'}</div>`;
+                              : `<div class="bct-empty">${nflMode==='place'?'No &#10003; picks this week.':nflMode==='overs'?'No &#9650; Overs picks this week.':'No NFL picks posted yet this week.'}</div>`;
     // recommended parlay: top two check picks from different games (built by raya_nfl_parlay_live.py)
     if (nflMode === 'place') {
       const { data: npl } = await sb.from('raya_parlay_log').select('*').eq('sport', 'nfl').order('built_at', { ascending: false }).limit(40);
@@ -717,7 +783,51 @@ async function render() {
       if (nrec) body = hdr('RECOMMENDED PARLAY &middot; TOP TWO &middot; DIFFERENT GAMES') + parlayCard(nrec, 1) + recLine + hdr('SINGLES') + body;
     }
     shell('NFL Props Brief', `${week?`WEEK ${week} &middot; `:''}${dateLbl} &middot; DK/FD Lines`, body,
-          `${picks.length} NFL Calls`, 'Model <b>ewma16 &middot; Under-only &#10003;</b>');
+          `${picks.length} NFL Calls`, nflMode === 'overs' ? 'Rule <b>Overs &middot; REC / REC YDS / RUSH YDS &middot; DK/FD &ge; &minus;120</b>' : 'Model <b>ewma16 &middot; Under-only &#10003;</b>');
+  } else if (view === 'bets') {
+    const [{ data: rows, error }, { data: board }] = await Promise.all([
+      sb.from('raya_bets').select('*').order('placed_at', { ascending: false }).limit(120),
+      sb.from('raya_bets_scoreboard').select('*')
+    ]);
+    if (error) return shell('Bets','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
+    const g = (rows || []).filter(r => r.result === 'win' || r.result === 'loss');
+    const tot = g.reduce((s, r) => s + (+r.profit_units || 0), 0), stk = g.reduce((s, r) => s + (+r.stake || 0), 0);
+    const sg = x => (x >= 0 ? '+' : '') + (+x).toFixed(2);
+    const bline = (board || []).map(r => `<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 0;border-top:1px solid var(--line)"><span>${esc(r.rule)}</span><span>${r.wins}&ndash;${(r.n || 0) - (r.wins || 0)} &middot; <b style="color:${(r.units || 0) >= 0 ? 'var(--over)' : 'var(--under)'}">${sg(r.units || 0)}u</b> on ${(+r.staked || 0).toFixed(1)}u</span></div>`).join('');
+    const boardHTML = `<div class="bct-tile" style="margin-bottom:10px"><div class="bct-tbk">Real money &middot; ${g.length} settled &middot; <b style="color:${tot >= 0 ? 'var(--over)' : 'var(--under)'}">${sg(tot)}u</b> on ${stk.toFixed(1)}u${stk ? ` &middot; ROI ${sg(100 * tot / stk)}%` : ''}</div>${bline || '<div class="bct-cmeta" style="padding:6px 0">Nothing settled yet.</div>'}</div>`;
+    const manual = `<div class="bct-tile" style="margin-bottom:10px"><div class="bct-tbk">Log a bet by hand</div>
+      <div class="betform" style="grid-template-columns:1fr 1fr" id="mform">
+        <select name="sport"><option value="nfl">NFL</option><option value="nhl">NHL</option><option value="ncaaf">NCAAF</option><option value="nba">NBA</option><option value="mlb_k">MLB</option><option value="other">Other</option></select>
+        <input name="player" placeholder="player / team">
+        <input name="market" placeholder="market (rec yds, ML...)">
+        <input name="sideline" placeholder="side + line (Over 5.5)">
+        <select name="book">${BET_BOOKS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
+        <input name="price" type="number" step="1" placeholder="price (-110)">
+        <input name="stake" type="number" step="0.25" value="1" placeholder="units">
+        <button id="msave">Save</button></div></div>`;
+    const rowHTML = (rows || []).map(r => {
+      _bets['row' + r.id] = r;
+      const res = r.result ? `<span class="bct-tpx" style="color:${r.result === 'win' ? 'var(--over)' : r.result === 'loss' ? 'var(--under)' : 'var(--mute)'}">${r.result.toUpperCase()} ${r.profit_units != null ? sg(r.profit_units) + 'u' : ''}</span>`
+        : `<span class="betrow" style="margin:0"><button class="res w" data-res="${r.id}:win">W</button><button class="res l" data-res="${r.id}:loss">L</button><button class="res" data-res="${r.id}:push">P</button></span>`;
+      const bk = (EDGE_BOOK[r.book] || [r.book])[0];
+      return `<div class="bct-card"><div class="bct-rail"><div class="bct-rank" style="font-size:18px"><b>${esc((r.sport || '').toUpperCase())}</b>${esc(String(r.rule || '').replace(/^(nfl|edge)_/, '').slice(0, 6))}</div></div>
+        <div class="bct-main"><div class="bct-name" style="font-size:20px">${esc(r.player || r.matchup || r.market || '')}</div>
+        <div class="bct-match">${esc(r.market || '')}${r.side ? ' &middot; ' + esc(r.side) + (r.line != null ? ' ' + r.line : '') : ''} &middot; ${esc(bk || '')} ${fmtOdds(r.price)} &middot; ${(+r.stake).toFixed(2)}u &middot; ${esc(r.slate_date || String(r.placed_at).slice(0, 10))}</div>
+        <div class="bct-cmeta" style="margin-top:6px;display:flex;align-items:center;gap:8px">${res}</div></div></div>`;
+    }).join('');
+    shell('Bets', 'Real Money &middot; What Was Actually Placed', boardHTML + manual + (rowHTML || '<div class="bct-empty">No bets logged yet. Tap Bet on any card.</div>'), `${(rows || []).length} Bets`, 'Graded <b>7:10 AM ET</b>');
+    const ms = document.getElementById('msave');
+    if (ms) ms.onclick = async () => {
+      const f = document.getElementById('mform'), v = n => f.querySelector(`[name=${n}]`).value.trim();
+      const m = v('sideline').match(/^(over|under|o|u)?\s*([\-\d.]+)?/i) || [];
+      const price = parseInt(v('price'), 10), stake = parseFloat(v('stake'));
+      if (!price || !stake) return;
+      const rec = { sport: v('sport'), source: 'manual', rule: 'manual', slate_date: todayETd(), player: v('player') || null, market: v('market') || null,
+                    side: m[1] ? (m[1].toLowerCase().startsWith('o') ? 'Over' : 'Under') : (v('sideline') || null), line: m[2] ? +m[2] : null, book: v('book'), price, stake };
+      const { error } = await sb.from('raya_bets').insert(rec);
+      if (error) { ms.textContent = 'Error'; console.error(error); return; }
+      render();
+    };
   } else if (view === 'nhl') {
     // NHL shots-on-goal: Edge price flags at my books (paper). Best = early + one book.
     if (nhlMode === 'results') {
