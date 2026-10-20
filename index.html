@@ -148,7 +148,7 @@ const fmtLine = x => (x == null ? '' : (+x).toString());
 const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
 
 let view = 'k';        // 'k' | 'wnba' | 'nfl' | 'parlay'
-let nhlMode = 'best';   // 'best' (early + one book, default) | 'all' | 'results'
+let nhlMode = 'hr';     // 'hr' (Hard Rock shots exactly as pushed, default) | 'best' | 'all' | 'results'
 let edgeMode = 'live';  // 'live' (my books, upcoming) | 'all' (every book) | 'results'
 let nflMode = 'place';  // 'place' (check picks, default) | 'overs' (named OVERS rule) | 'all'
 let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
@@ -164,7 +164,7 @@ let _kStakes = {};     // computed each render: pitcher_name -> { stakeU, dollar
 // Visible build stamp — bump on each deploy. Lets you confirm at a glance which
 // markup the Home-Screen icon is actually running. Keep the version aligned with
 // the service-worker cache name in sw.js (currently 'raya-brief-v2').
-const BUILD = 'v8.4 / 2026-10-15';
+const BUILD = 'v8.5 / 2026-10-19';
 
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
@@ -689,6 +689,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <div class="subtab ${nflMode==='all'?'on':''}" data-nfl="all">All</div>
     </div>` : view === 'nhl' ? `
     <div class="subtabs">
+      <div class="subtab ${nhlMode==='hr'?'on':''}" data-nhl="hr">&#128176; Hard Rock</div>
       <div class="subtab ${nhlMode==='best'?'on':''}" data-nhl="best">&#10003; Best</div>
       <div class="subtab ${nhlMode==='all'?'on':''}" data-nhl="all">All</div>
       <div class="subtab ${nhlMode==='results'?'on':''}" data-nhl="results">Results</div>
@@ -838,6 +839,21 @@ async function render() {
       if (error) return shell('NHL Shots','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
       const body = nhlBoard(tg || []) + ((rec || []).length ? (rec || []).map(edgeResultRow).join('') : '<div class="bct-empty" style="padding:18px">No graded flags yet.</div>');
       return shell('NHL Shots', 'Paper Scoreboard &middot; My Books', body, `${(rec || []).length} Recent`, 'Ref <b>Pinnacle</b>');
+    }
+    if (nhlMode === 'hr') {
+      // 10/19: the bet list. Raw flags, same filter as the scanner's push rule (NHL / player_shots / hardrock), newest first.
+      const since = new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 19) + 'Z';
+      const { data: hr, error: herr } = await sb.from('edge_flags').select('*').eq('sport', 'NHL').eq('market', 'player_shots').eq('book', 'hardrock')
+        .gt('event_start', since).order('first_seen', { ascending: false }).limit(150);
+      if (herr) return shell('NHL Shots','', `<div class="bct-empty">Couldn't load.<br>${esc(herr.message)}</div>`, '', '');
+      const now = Date.now();
+      const rows = (hr || []).filter(p => !p.result).sort((a, b) => ((a.active !== 1) - (b.active !== 1)) || (new Date(b.first_seen) - new Date(a.first_seen)));
+      const live = rows.filter(p => p.active === 1 && new Date(p.event_start) > now).length;
+      const chip = p => p.active === 1 ? '<span class="bct-placechip">&#128176; BET &middot; Hard Rock</span>'
+                                       : '<span class="bct-placechip" style="color:var(--mute);border-color:var(--line)">Gone</span>';
+      const body = rows.length ? rows.map((p, idx) => edgeCard(p, idx + 1, chip(p))).join('')
+                               : `<div class="bct-empty">No Hard Rock shots flags right now.<br><span style="font-size:12px">This list is exactly what the BET push sends. Games are scanned inside 6 hours of puck drop.</span></div>`;
+      return shell('NHL Shots', 'Hard Rock &middot; Shots on Goal &middot; as pushed', body, `${live} Live`, 'Real money <b>Hard Rock only</b>');
     }
     const { data, error } = await sb.from('edge_picks').select('*').eq('sport', 'NHL').eq('bettable', true).gt('event_start', new Date().toISOString().slice(0, 19) + 'Z').order('ev', { ascending: false }).limit(150);
     if (error) return shell('NHL Shots','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
