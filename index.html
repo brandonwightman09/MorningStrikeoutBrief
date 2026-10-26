@@ -165,7 +165,7 @@ let _kStakes = {};     // computed each render: pitcher_name -> { stakeU, dollar
 // Visible build stamp — bump on each deploy. Lets you confirm at a glance which
 // markup the Home-Screen icon is actually running. Keep the version aligned with
 // the service-worker cache name in sw.js (currently 'raya-brief-v2').
-const BUILD = 'v8.6 / 2026-10-26';
+const BUILD = 'v8.7 / 2026-10-26';
 
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
@@ -902,12 +902,18 @@ async function render() {
     }).join('');
     shell('Findings', 'Raya Analyst &middot; Nothing changes until you apply it', board + (cardHTML || `<div class="bct-empty">${findMode === 'open' ? 'No open findings. Next analyst run is Monday 8 AM.' : 'Nothing here.'}</div>`),
           `${cuts.length} Findings`, 'Runs <b>Mon 8 AM ET</b>');
-    app.querySelectorAll('[data-fkey]').forEach(b => b.onclick = async () => {
-      b.textContent = '…';
+    // two-tap safety: first tap arms the button ("Sure?"), a second tap within 5s commits; it resets on its own otherwise
+    app.querySelectorAll('[data-fkey]').forEach(b => { const label = b.textContent; b.onclick = async () => {
+      if (!b.dataset.armed) {
+        b.dataset.armed = '1'; b.textContent = 'Sure? ' + label; b.style.borderColor = 'var(--acc)'; b.style.color = 'var(--acc)';
+        setTimeout(() => { if (b.dataset.armed) { delete b.dataset.armed; b.textContent = label; b.style.borderColor = ''; b.style.color = ''; } }, 5000);
+        return;
+      }
+      delete b.dataset.armed; b.textContent = '…';
       const { error } = await sb.from('raya_findings').update({ status: b.dataset.fstatus }).eq('key', b.dataset.fkey);
       if (error) { b.textContent = 'Err'; console.error(error); return; }
       render();
-    });
+    }; });
   } else if (view === 'edge') {
     if (edgeMode === 'results') {
       const [{ data: sbd, error }, { data: rec }] = await Promise.all([

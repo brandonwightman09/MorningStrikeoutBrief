@@ -1,4 +1,4 @@
-const CACHE = 'raya-brief-v9';
+const CACHE = 'raya-brief-v10';
 
 self.addEventListener('install', () => self.skipWaiting());
 
