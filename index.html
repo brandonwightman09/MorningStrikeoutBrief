@@ -149,6 +149,7 @@ const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
 
 let view = 'k';        // 'k' | 'wnba' | 'nfl' | 'parlay'
 let nhlMode = 'hr';     // 'hr' (Hard Rock shots exactly as pushed, default) | 'best' | 'all' | 'results'
+let findMode = 'open';  // 'open' (new+watching) | 'applied' | 'rejected' | 'all'
 let edgeMode = 'live';  // 'live' (my books, upcoming) | 'all' (every book) | 'results'
 let nflMode = 'place';  // 'place' (check picks, default) | 'overs' (named OVERS rule) | 'all'
 let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
@@ -164,7 +165,7 @@ let _kStakes = {};     // computed each render: pitcher_name -> { stakeU, dollar
 // Visible build stamp — bump on each deploy. Lets you confirm at a glance which
 // markup the Home-Screen icon is actually running. Keep the version aligned with
 // the service-worker cache name in sw.js (currently 'raya-brief-v2').
-const BUILD = 'v8.5 / 2026-10-19';
+const BUILD = 'v8.6 / 2026-10-26';
 
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
@@ -698,6 +699,11 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <div class="subtab ${edgeMode==='live'?'on':''}" data-edge="live">My Books</div>
       <div class="subtab ${edgeMode==='all'?'on':''}" data-edge="all">All Books</div>
       <div class="subtab ${edgeMode==='results'?'on':''}" data-edge="results">Results</div>
+    </div>` : view === 'findings' ? `<div class="subtabs">
+      <div class="subtab ${findMode==='open'?'on':''}" data-find="open">Open</div>
+      <div class="subtab ${findMode==='applied'?'on':''}" data-find="applied">Applied</div>
+      <div class="subtab ${findMode==='rejected'?'on':''}" data-find="rejected">Rejected</div>
+      <div class="subtab ${findMode==='all'?'on':''}" data-find="all">All</div>
     </div>` : '';
   app.innerHTML = `<div class="bct">
     <div class="bct-hdr">
@@ -713,6 +719,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <div class="tab ${view==='parlay'?'on':''}" data-view="parlay">Parlays</div>
       <div class="tab ${view==='edge'?'on':''}" data-view="edge">Edge</div>
       <div class="tab ${view==='bets'?'on':''}" data-view="bets">Bets</div>
+      <div class="tab ${view==='findings'?'on':''}" data-view="findings">Findings</div>
     </div>
     ${subtabs}
     <div class="bct-list" id="list">${body}</div>
@@ -720,7 +727,7 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <span>${footR} &middot; <a id="signout">Sign out</a></span></div>
   </div>`;
   app.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; render(); });
-  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (t.dataset.wstat) { wnbaStat = t.dataset.wstat; } else if (t.dataset.nfl) { nflMode = t.dataset.nfl; } else if (t.dataset.nhl) { nhlMode = t.dataset.nhl; } else if (t.dataset.edge) { edgeMode = t.dataset.edge; } render(); });
+  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (t.dataset.wstat) { wnbaStat = t.dataset.wstat; } else if (t.dataset.nfl) { nflMode = t.dataset.nfl; } else if (t.dataset.nhl) { nhlMode = t.dataset.nhl; } else if (t.dataset.edge) { edgeMode = t.dataset.edge; } else if (t.dataset.find) { findMode = t.dataset.find; } render(); });
   const so = document.getElementById('signout');
   if (so) so.onclick = async () => { await sb.auth.signOut(); route(); };
   wireBets(app);
@@ -865,6 +872,42 @@ async function render() {
                               : `<div class="bct-empty">${nhlMode === 'best' ? 'No &#10003; flags right now.' : 'No NHL flags right now.'}<br><span style="font-size:12px">Games are scanned inside 6 hours of puck drop.</span></div>`;
     shell('NHL Shots', `Shots on Goal &middot; ${nhlMode === 'best' ? 'Early &middot; One Book' : 'All Flags'} &middot; My Books`, body,
           `${live} Live Flags`, 'Paper <b>gate not passed</b>');
+  } else if (view === 'findings') {
+    // Raya Analyst (tools/raya_analyst.py, Mondays 8 AM): every track + every cut that cleared the noise bar. Brandon decides here.
+    const { data, error } = await sb.from('raya_findings').select('*').limit(1000);
+    if (error) return shell('Findings','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
+    const all = data || [];
+    const sg = x => (x >= 0 ? '+' : '') + (+x).toFixed(1);
+    const col = u => (u >= 0 ? 'var(--over)' : 'var(--under)');
+    const tracks = all.filter(r => r.kind === 'track').sort((a, b) => (b.units || 0) - (a.units || 0));
+    const tline = tracks.map(r => `<div style="display:flex;justify-content:space-between;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 0;border-top:1px solid var(--line)"><span>${esc(r.track)}</span><span style="white-space:nowrap">${r.wins}&ndash;${r.losses} &middot; <b style="color:${col(r.units)}">${sg(r.units)}u</b> &middot; ${sg(r.roi)}% &middot; <b>${esc(String(r.verdict || '').toUpperCase())}</b></span></div>`).join('');
+    const lastRun = all.length ? new Date(Math.max(...all.map(r => +new Date(r.last_seen || 0)))) : null;
+    const board = `<div class="bct-tile" style="margin-bottom:10px"><div class="bct-tbk">Tracks &middot; ${tracks.length} &middot; ${lastRun ? 'run ' + lastRun.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</div>${tline || '<div class="bct-cmeta" style="padding:6px 0">No analyst run yet.</div>'}</div>`;
+    let cuts = all.filter(r => r.kind === 'drag' || r.kind === 'lift');
+    if (findMode === 'open') cuts = cuts.filter(r => r.status === 'new' || r.status === 'watching');
+    else if (findMode !== 'all') cuts = cuts.filter(r => r.status === findMode);
+    const confRank = { high: 0, medium: 1, low: 2 };
+    cuts.sort((a, b) => (confRank[a.confidence] ?? 3) - (confRank[b.confidence] ?? 3) || Math.abs(b.z || 0) - Math.abs(a.z || 0));
+    const chip = (t, c) => `<span class="bct-tpx" style="color:${c};border:1px solid ${c};border-radius:6px;padding:1px 6px;font-size:10px">${t}</span>`;
+    const cardHTML = cuts.map(r => {
+      const cc = r.confidence === 'high' ? 'var(--over)' : r.confidence === 'medium' ? 'var(--acc)' : 'var(--mute)';
+      const st = r.status === 'applied' ? 'var(--over)' : r.status === 'rejected' ? 'var(--under)' : r.status === 'watching' ? 'var(--acc)' : 'var(--mute)';
+      const btn = (lbl, v) => `<button class="res ${r.status === v ? 'w' : ''}" data-fkey="${esc(r.key)}" data-fstatus="${v}">${lbl}</button>`;
+      return `<div class="bct-card"><div class="bct-rail"><div class="bct-rank" style="font-size:16px"><b>${r.kind === 'drag' ? '&minus;' : '&#9650;'}</b>${esc(r.kind)}</div></div>
+        <div class="bct-main"><div class="bct-name" style="font-size:17px">${esc(r.track)}</div>
+        <div class="bct-match">${esc(r.dim)} = <b>${esc(r.value)}</b> &middot; ${r.wins}&ndash;${r.losses} &middot; <b style="color:${col(r.units)}">${sg(r.units)}u</b> &middot; ${sg(r.roi)}% &middot; n=${r.n} &middot; ${r.weeks_pos}/${r.weeks} wks</div>
+        <div class="bct-cmeta" style="margin-top:4px">${esc(r.action)}</div>
+        <div class="bct-cmeta" style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${chip(String(r.confidence || '').toUpperCase(), cc)} ${chip(String(r.status || '').toUpperCase(), st)}
+          <span class="betrow" style="margin:0 0 0 auto">${btn('Watch', 'watching')}${btn('Apply', 'applied')}${btn('Reject', 'rejected')}</span></div></div></div>`;
+    }).join('');
+    shell('Findings', 'Raya Analyst &middot; Nothing changes until you apply it', board + (cardHTML || `<div class="bct-empty">${findMode === 'open' ? 'No open findings. Next analyst run is Monday 8 AM.' : 'Nothing here.'}</div>`),
+          `${cuts.length} Findings`, 'Runs <b>Mon 8 AM ET</b>');
+    app.querySelectorAll('[data-fkey]').forEach(b => b.onclick = async () => {
+      b.textContent = '…';
+      const { error } = await sb.from('raya_findings').update({ status: b.dataset.fstatus }).eq('key', b.dataset.fkey);
+      if (error) { b.textContent = 'Err'; console.error(error); return; }
+      render();
+    });
   } else if (view === 'edge') {
     if (edgeMode === 'results') {
       const [{ data: sbd, error }, { data: rec }] = await Promise.all([
