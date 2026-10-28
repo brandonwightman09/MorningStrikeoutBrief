@@ -128,7 +128,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_64yRp9qL6lES2TGOItXeEg_UFtWQfJ2';
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const app = document.getElementById('app');
 
-// Open the DraftKings app at the exact game; fall back to the web event page.
+// (DK deep-link helper kept for future card use)
 window.placeDK = (web) => {
   const m = (web || '').match(/\/event\/(\d+)/);
   if (!m) { window.location.href = web; return; }   // lobby / no event id -> web
@@ -146,27 +146,6 @@ window.placeDK = (web) => {
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmtLine = x => (x == null ? '' : (+x).toString());
 const fmtOdds = x => (x == null ? '' : (x > 0 ? '+' + x : '' + x));
-
-let view = 'k';        // 'k' | 'wnba' | 'nfl' | 'parlay'
-let nhlMode = 'hr';     // 'hr' (Hard Rock shots exactly as pushed, default) | 'best' | 'all' | 'results'
-let findMode = 'open';  // 'open' (new+watching) | 'applied' | 'rejected' | 'all'
-let edgeMode = 'live';  // 'live' (my books, upcoming) | 'all' (every book) | 'results'
-let nflMode = 'place';  // 'place' (check picks, default) | 'overs' (named OVERS rule) | 'all'
-let wstat = 'Shots';   // 'Shots' | 'Shots On Target'
-let wnbaStat = 'place';  // 'place' (top-5 with check, default) | 'all' | 'points' | 'rebounds' | 'assists' | 'threes'
-let kmode = 'flat';    // 'flat' | 'kelly' — strikeout stake sizing; flat is the live default
-
-// Strikeout staking config (edit and redeploy to change). 1 unit = $30.
-// Flat stakes 1u per pick. ¼-Kelly sizes off raya_prob vs the best price,
-// capped per pick and scaled so the slate total never exceeds slateCapU.
-const STAKE = { bankroll: 1500, unit: 30, kellyFrac: 0.25, pickCapU: 2.0, slateCapU: 5.0 };
-let _kStakes = {};     // computed each render: pitcher_name -> { stakeU, dollars, toWin }
-
-// Visible build stamp — bump on each deploy. Lets you confirm at a glance which
-// markup the Home-Screen icon is actually running. Keep the version aligned with
-// the service-worker cache name in sw.js (currently 'raya-brief-v2').
-const BUILD = 'v8.7 / 2026-10-26';
-
 // Friends sign in with a simple username + password. Supabase is email-based,
 // so the username is mapped to <username>@raya-hq.com under the hood — no real
 // email is needed or sent (requires "Confirm email" OFF in Supabase Auth).
@@ -218,488 +197,103 @@ function authScreen(msg, cls) {
   };
   P.addEventListener('keydown', e => { if (e.key === 'Enter') btn.click(); });
 }
+// ── v9.0 (10/28): one tab. Bets → "Last Night" (real-money summary from raya_bets) | "Findings" (Raya Analyst). ──
+let betsMode = 'night';   // 'night' | 'findings'
+let findMode = 'open';    // 'open' (new+watching) | 'applied' | 'rejected' | 'all'
 
-/* ── strikeout card (unchanged) ── */
-function computeKStakes(picks) {
-  const dec = px => px == null ? null : (px > 0 ? 1 + px/100 : 1 + 100/Math.abs(px));
-  const raw = picks.map(p => {
-    const d = dec(p.best_price);
-    if (d == null) return { u:0, b:null };
-    const b = d - 1, prob = p.raya_prob != null ? +p.raya_prob : null;
-    if (prob == null) return { u:0, b };
-    const f = (prob*b - (1-prob)) / b;
-    const u = Math.max(0, Math.min(STAKE.pickCapU, f*STAKE.kellyFrac*STAKE.bankroll/STAKE.unit));
-    return { u, b };
+// Visible build stamp — bump on each deploy. Keep aligned with the service-worker cache name in sw.js.
+const BUILD = 'v9.0 / 2026-10-28';
+
+// Dollars per logged unit when a row's notes don't carry a "$" amount (Novig fills do: "$25.00 order …").
+// Novig trader logs stake in 5-dollar units ($25 order = 5.0u), so 5 is the live default.
+const UNIT_DOLLARS = 5;
+
+const BOOK_LBL = { novig:'Novig', draftkings:'DraftKings', fanduel:'FanDuel', hardrock:'Hard Rock', betmgm:'BetMGM', caesars:'Caesars', thescore:'theScore' };
+const RULE_LBL = { novig_nba_edge:'NBA Edge', novig_nfl_edge:'NFL Edge', novig_nfl_overs:'NFL ▲ Overs', novig_nhl_shots:'NHL Shots', novig_hr_shots:'NHL Shots (HR ref)',
+                   edge_hr_shots:'NHL Shots · Hard Rock', nfl_overs:'NFL ▲ Overs', nfl_place:'NFL ✓ Place' };
+const ruleLbl = r => RULE_LBL[r] || String(r || '').replace(/_/g, ' ');
+const MKT_LBL = { player_assists:'AST', player_rebounds:'REB', player_points:'PTS', player_shots:'SOG', player_blocks:'BLK', receptions:'REC', receiving_yards:'REC YDS',
+                  rushing_yards:'RUSH YDS', rushing_attempts:'RUSH ATT', rush_attempts:'RUSH ATT', passing_attempts:'PASS ATT', pass_attempts:'PASS ATT', completions:'COMP',
+                  passing_yards:'PASS YDS', moneyline:'ML', spread:'SPREAD', handicap:'SPREAD', totals:'TOTAL', total:'TOTAL' };
+const mktLbl = m => MKT_LBL[m] || String(m || '').replace(/_/g, ' ').toUpperCase();
+
+// Dollars risked on a row: "$NN.NN" in notes wins (what Novig actually filled); otherwise units × UNIT_DOLLARS.
+function betDollars(r) {
+  const m = String(r.notes || '').match(/\$(\d+(?:\.\d+)?)/);
+  if (m) return +m[1];
+  return (+r.stake || 0) * UNIT_DOLLARS;
+}
+function betProfitDollars(r) {
+  if (r.result !== 'win' && r.result !== 'loss') return 0;
+  const stake = +r.stake || 0;
+  return stake ? (+r.profit_units || 0) * (betDollars(r) / stake) : 0;
+}
+const money = x => (x < 0 ? '−$' : '+$') + Math.abs(x).toFixed(2);
+const moneyPlain = x => '$' + Math.abs(x).toFixed(2);
+
+// "Night" windows run 6 AM ET → 6 AM ET so a 10:57 PM fill lands on the night it was played.
+function etNow() { return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })); }
+function etOffsetMs() { return new Date() - etNow(); }     // UTC − ET wall clock, in ms
+function nightWindow(daysBack) {
+  const et = etNow();
+  const start = new Date(et.getFullYear(), et.getMonth(), et.getDate(), 6, 0, 0, 0);   // today 06:00 ET (as wall clock)
+  if (et.getHours() < 6) start.setDate(start.getDate() - 1);                              // before 6 AM: the night still running is "last night"
+  start.setDate(start.getDate() - daysBack);
+  const end = new Date(start); end.setDate(end.getDate() + 1);
+  const off = etOffsetMs();
+  return { start: new Date(+start + off), end: new Date(+end + off), label: start.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' }).toUpperCase() };
+}
+function tally(rows) {
+  const t = { n: rows.length, w: 0, l: 0, p: 0, open: 0, risk: 0, net: 0, units: 0 };
+  rows.forEach(r => {
+    if (r.result === 'win') t.w++; else if (r.result === 'loss') t.l++; else if (r.result === 'push') t.p++; else t.open++;
+    t.risk += betDollars(r); t.net += betProfitDollars(r); t.units += (+r.profit_units || 0);
   });
-  const slate = raw.reduce((s,r)=>s+r.u,0);
-  const scale = slate > STAKE.slateCapU ? STAKE.slateCapU/slate : 1;
-  const out = {};
-  picks.forEach((p,idx) => {
-    const r = raw[idx];
-    const stakeU = kmode === 'flat' ? 1.0 : +(r.u*scale).toFixed(2);
-    const dollars = Math.round(stakeU * STAKE.unit);
-    const toWin = (r.b != null && dollars > 0) ? Math.round(dollars * r.b) : null;
-    out[p.pitcher_name] = { stakeU, dollars, toWin };
-  });
-  return out;
+  return t;
 }
-
-function kCard(p, i) {
-  const differ = p.dk_line != null && p.fd_line != null && (+p.dk_line) !== (+p.fd_line);
-  const sideOver = (p.bet_side || '').toLowerCase() === 'over';
-  const tile = (bk, label, dot, ln, px) => {
-    if (ln == null) return '';
-    const best = p.best_book === bk;
-    const off  = differ && !best;
-    const cls  = 'bct-tile' + (best ? ' bct-best' : '') + (off ? ' bct-off' : '');
-    const ribbon = best ? '<span class="bct-ribbon">Raya Bet</span>' : '';
-    const price = off ? '<span class="bct-tpx bct-na">off line</span>'
-                      : `<span class="bct-tpx">${fmtOdds(px)}</span>`;
-    return `<div class="${cls}">${ribbon}
-      <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${label}</div>
-      <div class="bct-trow"><span class="bct-tln">${fmtLine(ln)}</span>${price}</div></div>`;
-  };
-  return `<div class="bct-card">
-    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
-    <div class="bct-main">
-      <div class="bct-name">${esc(p.pitcher_name)}</div>
-      <div class="bct-match">${esc(p.event_name)}</div>
-      <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
-        <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
-        <span class="bct-ln">${fmtLine(p.book_line)}</span>
-        <span class="bct-proj">PROJ <b>${p.raya_projected_k!=null?(+p.raya_projected_k).toFixed(2):'--'} K</b></span>
-      </div>
-      <div class="bct-tiles">
-        ${tile('draftkings','DraftKings','bct-dk',p.dk_line,p.dk_price)}
-        ${tile('fanduel','FanDuel','bct-fd',p.fd_line,p.fd_price)}
-      </div>
-      ${(() => {
-        const st = _kStakes[p.pitcher_name] || { stakeU:1, dollars:STAKE.unit, toWin:null };
-        if (!(st.dollars > 0)) return '';
-        const isFD = p.best_book === 'fanduel';
-        const label = isFD ? 'FanDuel' : 'DraftKings';
-        const bg = isFD ? 'oklch(0.66 0.16 250)' : 'oklch(0.74 0.16 150)';
-        const fg = isFD ? 'oklch(0.97 0.02 250)' : 'oklch(0.16 0.02 150)';
-        const q = encodeURIComponent(p.pitcher_name);
-        const url = isFD ? `https://sportsbook.fanduel.com/search?q=${q}`
-                         : (p.dk_link || `https://sportsbook.draftkings.com/leagues/baseball/mlb`);
-        const clickAttr = isFD ? 'target="_blank" rel="noopener"' : `onclick="placeDK('${url}');return false;"`;
-        const win = st.toWin != null ? `<div style="display:flex;flex-direction:column;line-height:1.1">
-            <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase">To win</span>
-            <span style="font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:18px;color:var(--over)">$${st.toWin}</span></div>` : '';
-        return `<div style="display:flex;align-items:center;gap:14px;margin-top:12px;padding:9px 11px;background:var(--tile);border:1px dashed var(--line);border-radius:9px">
-          <div style="display:flex;flex-direction:column;line-height:1.1">
-            <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase">Stake</span>
-            <span style="font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:18px">$${st.dollars}<small style="font-size:11px;color:var(--mute);font-weight:600;margin-left:3px">${st.stakeU.toFixed(1)}u</small></span></div>
-          ${win}
-          <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;color:var(--acc);text-transform:uppercase">${kmode==='kelly'?'¼-Kelly':'Flat 1u'}</span>
-        </div>
-        <a href="${url}" ${clickAttr} style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:9px;padding:11px;border-radius:9px;text-decoration:none;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.04em;text-transform:uppercase;background:${bg};color:${fg}">Place on ${label} &#8599;</a>`;
-      })()}
-    </div></div>`;
+function summaryTile(title, sub, t, big) {
+  const col = t.net >= 0 ? 'var(--over)' : 'var(--under)';
+  const stat = (lbl, val, c) => `<div style="display:flex;flex-direction:column;line-height:1.1;min-width:0">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase">${lbl}</span>
+      <span style="font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:${big ? 30 : 20}px;${c ? 'color:' + c : ''}">${val}</span></div>`;
+  const settled = t.w + t.l;
+  const pct = settled ? Math.round(100 * t.w / settled) + '%' : '--';
+  return `<div class="bct-tile" style="margin-bottom:10px;padding:12px 14px 13px">
+    <div class="bct-tbk" style="margin-bottom:9px">${title}${sub ? ` &middot; ${sub}` : ''}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:10px;align-items:end">
+      ${stat('Bets', t.n + (t.open ? `<small style="font-size:11px;color:var(--mute);font-weight:600;margin-left:4px">${t.open} open</small>` : ''))}
+      ${stat('Won &ndash; Lost', `${t.w}&ndash;${t.l}${t.p ? `<small style="font-size:11px;color:var(--mute);font-weight:600;margin-left:4px">${t.p}P</small>` : ''}<small style="font-size:11px;color:var(--mute);font-weight:600;margin-left:6px">${pct}</small>`)}
+      ${stat(t.net >= 0 ? 'Made' : 'Lost', t.n ? money(t.net) : '--', t.n ? col : 'var(--mute)')}
+    </div>
+    <div class="bct-cmeta" style="margin-top:9px">Risked ${moneyPlain(t.risk)}${t.risk ? ` &middot; ROI <b style="color:${col}">${(t.net >= 0 ? '+' : '') + (100 * t.net / t.risk).toFixed(1)}%</b>` : ''} &middot; ${(t.units >= 0 ? '+' : '') + t.units.toFixed(2)}u</div>
+  </div>`;
 }
-
-/* ── pitcher-outs card (forward-test): mirrors kCard, reads raya_projected_outs,
-   no Kelly/deep-link block (paper only, mlb_outs_brief has no dk_link/stakes) ── */
-function wnbaCard(p, i) {
-  const lns = [p.dk_line, p.fd_line, p.pin_line].filter(x => x != null);
-  const differ = lns.length > 1 && Math.max(...lns) !== Math.min(...lns);
-  const sideOver = (p.bet_side || '').toLowerCase() === 'over';
-  const unit = ({points:'PTS',rebounds:'REB',assists:'AST',threes:'3PM'})[p.stat] || '';
-  const tile = (bk, label, dot, ln, px) => {
-    if (ln == null) return '';
-    const best = p.best_book === bk;
-    const off  = differ && !best;
-    const cls  = 'bct-tile' + (best ? ' bct-best' : '') + (off ? ' bct-off' : '');
-    const ribbon = best ? '<span class="bct-ribbon">Raya Bet</span>' : '';
-    const price = off ? '<span class="bct-tpx bct-na">off line</span>'
-                      : `<span class="bct-tpx">${fmtOdds(px)}</span>`;
-    return `<div class="${cls}">${ribbon}
-      <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${label}</div>
-      <div class="bct-trow"><span class="bct-tln">${fmtLine(ln)}</span>${price}</div></div>`;
-  };
-  const placed = p.place_flag === 1;
-  return `<div class="bct-card${placed?' bct-placed':''}">
-    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
-    <div class="bct-main">
-      <div class="bct-name">${esc(p.player_name)}</div>
-      <div class="bct-match">${esc(unit)}${p.event_name?` &middot; ${esc(p.event_name)}`:''}${placed?'<span class="bct-placechip">&#10003; Place</span>':''}</div>
-      <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
-        <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
-        <span class="bct-ln">${fmtLine(p.book_line)}</span>
-        <span class="bct-proj">PROJ <b>${p.raya_projected!=null?(+p.raya_projected).toFixed(1):'--'} ${unit}</b></span>
-      </div>
-      <div class="bct-tiles">
-        ${tile('draftkings','DraftKings','bct-dk',p.dk_line,p.dk_price)}
-        ${tile('fanduel','FanDuel','bct-fd',p.fd_line,p.fd_price)}
-        ${tile('pinnacle','Pinnacle','bct-dk',p.pin_line,p.pin_price)}
-      </div>
-    </div></div>`;
+function betRow(r) {
+  const col = r.result === 'win' ? 'var(--over)' : r.result === 'loss' ? 'var(--under)' : 'var(--mute)';
+  const net = betProfitDollars(r);
+  const res = r.result ? `<span style="color:${col};font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:17px;white-space:nowrap">${esc(r.result.toUpperCase())} ${r.result === 'push' ? '' : money(net)}</span>`
+                       : `<span style="color:var(--mute);font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase">open</span>`;
+  const when = new Date(r.placed_at).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone:'America/New_York' });
+  const game = (String(r.notes || '').match(/\b([A-Z]{2,4} @ [A-Z]{2,4})\s*$/) || [])[1] || r.matchup || '';
+  return `<div class="bct-tile" style="padding:9px 12px">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:17px;text-transform:uppercase">${esc(r.player || r.matchup || '')}</span>
+      ${res}</div>
+    <div class="bct-cmeta" style="margin-top:3px">${esc(r.side || '')} ${r.line != null ? esc(String(r.line)) : ''} ${esc(mktLbl(r.market))} &middot; ${esc(BOOK_LBL[r.book] || r.book || '')} ${fmtOdds(r.price)} &middot; ${moneyPlain(betDollars(r))}${game ? ` &middot; ${esc(game)}` : ''} &middot; ${when} &middot; <b>${esc(ruleLbl(r.rule))}</b></div>
+  </div>`;
 }
-
-function outsCard(p, i) {
-  const differ = p.dk_line != null && p.fd_line != null && (+p.dk_line) !== (+p.fd_line);
-  const sideOver = (p.bet_side || '').toLowerCase() === 'over';
-  const tile = (bk, label, dot, ln, px) => {
-    if (ln == null) return '';
-    const best = p.best_book === bk;
-    const off  = differ && !best;
-    const cls  = 'bct-tile' + (best ? ' bct-best' : '') + (off ? ' bct-off' : '');
-    const ribbon = best ? '<span class="bct-ribbon">Raya Bet</span>' : '';
-    const price = off ? '<span class="bct-tpx bct-na">off line</span>'
-                      : `<span class="bct-tpx">${fmtOdds(px)}</span>`;
-    return `<div class="${cls}">${ribbon}
-      <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${label}</div>
-      <div class="bct-trow"><span class="bct-tln">${fmtLine(ln)}</span>${price}</div></div>`;
-  };
-  return `<div class="bct-card">
-    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
-    <div class="bct-main">
-      <div class="bct-name">${esc(p.pitcher_name)}</div>
-      <div class="bct-match">${esc(p.event_name)}</div>
-      <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
-        <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
-        <span class="bct-ln">${fmtLine(p.book_line)}</span>
-        <span class="bct-proj">PROJ <b>${p.raya_projected_outs!=null?(+p.raya_projected_outs).toFixed(2):'--'} outs</b></span>
-      </div>
-      <div class="bct-tiles">
-        ${tile('draftkings','DraftKings','bct-dk',p.dk_line,p.dk_price)}
-        ${tile('fanduel','FanDuel','bct-fd',p.fd_line,p.fd_price)}
-      </div>
-      ${(() => {
-        // Place button mirrors kCard: routes to the best-priced book. FanDuel
-        // opens a player search; DraftKings has no dk_link on the outs board
-        // (no harvester), so it falls back to the MLB lobby via placeDK.
-        const isFD = p.best_book === 'fanduel';
-        const label = isFD ? 'FanDuel' : 'DraftKings';
-        const bg = isFD ? 'oklch(0.66 0.16 250)' : 'oklch(0.74 0.16 150)';
-        const fg = isFD ? 'oklch(0.97 0.02 250)' : 'oklch(0.16 0.02 150)';
-        const q = encodeURIComponent(p.pitcher_name);
-        const url = isFD ? `https://sportsbook.fanduel.com/search?q=${q}`
-                         : `https://sportsbook.draftkings.com/leagues/baseball/mlb`;
-        const clickAttr = isFD ? 'target="_blank" rel="noopener"' : `onclick="placeDK('${url}');return false;"`;
-        return `<a href="${url}" ${clickAttr} style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:11px;padding:11px;border-radius:9px;text-decoration:none;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.04em;text-transform:uppercase;background:${bg};color:${fg}">Place on ${label} &#8599;</a>`;
-      })()}
-    </div></div>`;
-}
-
-/* ── EPL shots card (PrizePicks-shaped) ── */
-function soccerCard(p, i) {
-  const sideOver = (p.bet_side || '').toLowerCase() === 'over';
-  const unit = ({shots:'SH','shots on target':'SOT',sot:'SOT',key_passes:'KP',kp:'KP'})[(p.stat||'').toLowerCase()] || (p.stat ? p.stat.toUpperCase() : 'SH');
-  const sideProb = p.p_over == null ? null : (sideOver ? +p.p_over : 1 - +p.p_over);
-  const ha = (p.home_away||'').toUpperCase();
-  const ppTile = `<div class="bct-tile bct-best"><span class="bct-ribbon">PrizePicks</span>
-    <div class="bct-tbk"><span class="bct-tdot bct-pp"></span>${esc((p.odds_type||'std').toUpperCase())}</div>
-    <div class="bct-trow"><span class="bct-tln">${fmtLine(p.line)}</span></div></div>`;
-  const modelTile = `<div class="bct-tile">
-    <div class="bct-tbk"><span class="bct-tdot bct-dk"></span>Model${p.confidence?' &middot; '+esc(p.confidence):''}</div>
-    <div class="bct-trow"><span class="bct-tln">${sideProb!=null?Math.round(sideProb*100)+'%':'--'}</span>
-      <span class="bct-tpx">${esc((p.bet_side||'').toUpperCase())}</span></div></div>`;
-  return `<div class="bct-card">
-    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
-    <div class="bct-main">
-      <div class="bct-name">${esc(p.player_name)}</div>
-      <div class="bct-match">${esc(p.team||'')} vs ${esc(p.opponent||'')}${ha?' &middot; '+ha:''}</div>
-      <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
-        <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
-        <span class="bct-ln">${fmtLine(p.line)}</span>
-        <span class="bct-proj">PROJ <b>${p.raya_proj!=null?(+p.raya_proj).toFixed(2):'--'} ${unit}</b></span>
-      </div>
-      <div class="bct-tiles">${ppTile}${modelTile}</div>
-    </div></div>`;
-}
-
-/* ── World Cup watch card (tracked line, NOT a call) ── */
-function wcCard(r, i) {
-  const tag = wstat === 'Shots' ? 'SH' : 'SOT';
-  return `<div class="bct-card">
-    <div class="bct-rail"><div class="bct-rank" style="font-size:20px"><b>WC</b>${String(i).padStart(2,'0')}</div></div>
-    <div class="bct-main">
-      <div class="bct-name">${esc(r.player)}</div>
-      <div class="bct-match">${esc(r.team||'')} vs ${esc(r.opponent||'')}</div>
-      <div class="bct-bet" style="border-color:var(--acc-d);background:color-mix(in oklch,var(--acc) 9%,transparent)">
-        <span class="bct-side" style="color:var(--acc)">Watch</span>
-        <span class="bct-ln">${fmtLine(r.line)}</span>
-        <span class="bct-proj">${tag} &middot; <b>CLV-tracked</b></span>
-      </div>
-    </div></div>`;
-}
-
-/* ── Real-bet log: "Bet" button on a card -> inline form -> raya_bets row (graded nightly by raya_bets_grade.py) ── */
-const _bets = {};
-let _betSeq = 0;
-const BET_BOOKS = [['draftkings','DraftKings'],['fanduel','FanDuel'],['hardrock','Hard Rock'],['betmgm','BetMGM'],['caesars','Caesars'],['other','Other']];
-function betBtn(payload) {
-  const id = ++_betSeq; _bets[id] = payload;
-  return `<div class="betrow" data-betrow="${id}"><button class="bct-betbtn" data-bet="${id}">Bet</button></div>`;
-}
-function betForm(id) {
-  const p = _bets[id];
-  const opts = BET_BOOKS.map(([k, l]) => `<option value="${k}"${k === (p.book || '') ? ' selected' : ''}>${l}</option>`).join('');
-  return `<div class="betform" data-betform="${id}">
-    <select name="book">${opts}</select>
-    <input name="price" type="number" step="1" value="${p.price != null ? p.price : ''}" placeholder="price">
-    <input name="stake" type="number" step="0.25" min="0.25" value="1" placeholder="units">
-    <button data-betsave="${id}">Save</button></div>`;
-}
-const decOdds = a => a > 0 ? 1 + a / 100 : 1 + 100 / Math.abs(a);
-const betProfit = (res, price, stake) => res === 'win' ? +(stake * (decOdds(price) - 1)).toFixed(3) : res === 'loss' ? -stake : 0;
-function wireBets(root) {
-  root.querySelectorAll('[data-bet]').forEach(b => b.onclick = () => {
-    const id = b.dataset.bet, row = root.querySelector(`[data-betrow="${id}"]`);
-    if (row.querySelector('.betform')) { row.querySelector('.betform').remove(); return; }
-    row.insertAdjacentHTML('beforeend', betForm(id));
-    row.querySelector(`[data-betsave="${id}"]`).onclick = async () => {
-      const f = row.querySelector('.betform'), p = _bets[id];
-      const price = parseInt(f.querySelector('[name=price]').value, 10), stake = parseFloat(f.querySelector('[name=stake]').value);
-      if (!price || !stake) return;
-      const rec = { ...p, book: f.querySelector('[name=book]').value, price, stake };
-      delete rec._label;
-      const { error } = await sb.from('raya_bets').insert(rec);
-      if (error) { b.textContent = 'Error'; console.error(error); return; }
-      f.remove(); b.textContent = `Logged ${stake}u @ ${fmtOdds(price)}`; b.classList.add('done'); b.onclick = null;
-    };
-  });
-  root.querySelectorAll('[data-res]').forEach(x => x.onclick = async () => {
-    const [bid, res] = x.dataset.res.split(':'); const r = _bets['row' + bid]; if (!r) return;
-    const upd = { result: res, profit_units: betProfit(res, r.price, +r.stake), graded_at: new Date().toISOString() };
-    const { error } = await sb.from('raya_bets').update(upd).eq('id', +bid);
-    if (!error) render();
-  });
-}
-const todayETd = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-
-/* ── NFL props card: reads nfl_props_brief (latest week only) + slate_date from nfl_props_brief_log ── */
-const NFL_STAT = { rush_attempts:'RUSH ATT', pass_attempts:'PASS ATT', completions:'COMP', receptions:'REC',
-                   rushing_yards:'RUSH YDS', receiving_yards:'REC YDS', passing_yards:'PASS YDS', tackles_ast:'TKL+AST',
-                   rush_rec_yards:'RUSH+REC YDS' };
-const NFL_VET = 33;   // ngames threshold for the [VET] marker (PLACE Unders on 33+ career games: 62% / +21% ROI backtest)
-function nflCard(p, i, slate) {
-  const lns = [p.dk_line, p.fd_line].filter(x => x != null);
-  const differ = lns.length > 1 && Math.max(...lns) !== Math.min(...lns);
-  const sideOver = (p.bet_side || '').toLowerCase() === 'over';
-  const unit = NFL_STAT[p.stat] || (p.stat || '').replace(/_/g,' ').toUpperCase();
-  const tile = (bk, label, dot, ln, px) => {
-    if (ln == null) return '';
-    const best = p.best_book === bk;
-    const off  = differ && !best;
-    const cls  = 'bct-tile' + (best ? ' bct-best' : '') + (off ? ' bct-off' : '');
-    const ribbon = best ? '<span class="bct-ribbon">Raya Bet</span>' : '';
-    const price = off ? '<span class="bct-tpx bct-na">off line</span>'
-                      : `<span class="bct-tpx">${fmtOdds(px)}</span>`;
-    return `<div class="${cls}">${ribbon}
-      <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${label}</div>
-      <div class="bct-trow"><span class="bct-tln">${fmtLine(ln)}</span>${price}</div></div>`;
-  };
-  const placed = p.place_flag === 1;
-  const vet = p.ngames != null && +p.ngames >= NFL_VET;
-  const chips = (placed
-    ? (vet ? '<span class="bct-placechip">&#10003; Place &middot; VET</span>'
-           : '<span class="bct-placechip" style="color:var(--acc);border-color:var(--acc-d)">&#10003; Paper / &frac12;u</span>')
-    : '') + (p.overs_flag === 1 ? `<span class="bct-placechip" style="color:var(--over);border-color:var(--over)">&#9650; Overs${vet ? ' &middot; VET' : ''}</span>` : '');
-  const dayLbl = slate ? new Date(slate + 'T12:00:00').toLocaleDateString('en-US', { weekday:'short', month:'numeric', day:'numeric' }).toUpperCase() : '';
-  const done = slate && slate < _todayET();
-  return `<div class="bct-card${placed?' bct-placed':''}"${done?' style="opacity:.5"':''}>
-    <div class="bct-rail"><div class="bct-rank"><b>NO</b>${String(i).padStart(2,'0')}</div></div>
-    <div class="bct-main">
-      <div class="bct-name">${esc(p.player_name)}</div>
-      <div class="bct-match">${esc(unit)}${dayLbl?` &middot; ${dayLbl}`:''}${p.ngames!=null?` &middot; ${p.ngames}G`:''}${chips}</div>
-      <div class="bct-bet ${sideOver?'bct-over':'bct-under'}">
-        <span class="bct-side">${esc((p.bet_side||'').toUpperCase())}</span>
-        <span class="bct-ln">${fmtLine(p.book_line)}</span>
-        <span class="bct-proj">PROJ <b>${p.raya_projected!=null?(+p.raya_projected).toFixed(1):'--'}</b></span>
-      </div>
-      <div class="bct-tiles">
-        ${tile('draftkings','DraftKings','bct-dk',p.dk_line,p.dk_price)}
-        ${tile('fanduel','FanDuel','bct-fd',p.fd_line,p.fd_price)}
-      </div>
-      ${done ? '' : betBtn({ sport: 'nfl', source: 'nfl_brief', source_id: p._logid || null, rule: p.overs_flag === 1 ? 'nfl_overs' : (placed ? 'nfl_place' : 'nfl_other'),
-                 slate_date: slate || null, event_id: null, matchup: null, player: p.player_name, market: p.stat, side: p.bet_side, line: p.book_line,
-                 book: p.best_book, price: p.best_price })}
-    </div></div>`;
-}
-function _todayET() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-}
-
-/* ── Raya Edge: sharp-vs-soft price flags (edge_picks view = one row per selection) + paper scoreboard ── */
-const EDGE_MKT = { player_shots:'SOG', player_blocks:'BLK', rushing_yards:'RUSH YDS', receiving_yards:'REC YDS', passing_yards:'PASS YDS',
-                   rushing_attempts:'RUSH ATT', passing_attempts:'PASS ATT', receptions:'REC', completions:'COMP',
-                   player_rebounds:'REB', player_assists:'AST', player_points:'PTS', handicap:'SPREAD', spread:'SPREAD',
-                   totals:'TOTAL', total:'TOTAL', moneyline:'ML' };
-const EDGE_BOOK = { draftkings:['DraftKings','bct-dk'], fanduel:['FanDuel','bct-fd'], betmgm:['BetMGM','bct-mgm'], hardrock:['Hard Rock','bct-hr'],
-                    caesars:['Caesars','bct-pp'], thescore:['theScore','bct-pp'] };
-const edgeMkt = m => EDGE_MKT[m] || String(m || '').replace(/_/g, ' ').toUpperCase();
-const edgePct = (x, d = 1) => x == null ? '--' : ((+x >= 0 ? '+' : '') + (+x * 100).toFixed(d) + '%');
-function edgeWhen(iso) {
-  const d = new Date(iso); if (isNaN(d)) return '';
-  const mins = Math.round((d - Date.now()) / 60000);
-  const t = d.toLocaleString('en-US', { weekday:'short', hour:'numeric', minute:'2-digit', timeZone:'America/New_York' }).toUpperCase();
-  return mins > 0 && mins < 180 ? `${t} &middot; ${mins}M` : t;
-}
-function edgeBet(p) {
-  const lv = String(p.line_value || ''), m = lv.match(/^(Over|Under)\s+([\-\d.]+)/i);
-  const team = /handicap|spread|moneyline/.test(p.market || '');
-  if (m) return { side: m[1].toUpperCase(), ln: m[2], over: m[1].toLowerCase() === 'over', name: team || /^(over|under)$/i.test(p.participant || '') ? p.matchup : p.participant };
-  if (p.market === 'moneyline') return { side: 'ML', ln: '', over: true, name: p.participant };
-  return { side: lv, ln: '', over: !lv.startsWith('-'), name: p.participant };
-}
-function edgeCard(p, i, chip) {
-  const b = edgeBet(p), bk = EDGE_BOOK[p.book] || [p.book, 'bct-pp'];
-  const gone = p.active !== 1;
-  const px = p.price != null ? p.price : p.first_price;
-  const refLn = p.ref_line || (b.ln ? `${b.side[0]}${b.ln}` : b.side);
-  const more = p.n_books > 1 ? ` &middot; ${p.n_books} books` : '';
-  return `<div class="bct-card"${gone ? ' style="opacity:.5"' : ''}>
-    <div class="bct-rail"><div class="bct-rank"><b>${esc(p.sport || '')}</b>${String(i).padStart(2,'0')}</div></div>
-    <div class="bct-main">
-      <div class="bct-name" style="font-size:22px">${esc(b.name || p.matchup || '')}</div>
-      <div class="bct-match">${esc(edgeMkt(p.market))} &middot; ${esc(p.matchup || '')} &middot; ${edgeWhen(p.event_start)}${chip || '<span class="bct-placechip" style="color:var(--acc);border-color:var(--acc-d)">Paper</span>'}</div>
-      <div class="bct-bet ${b.over ? 'bct-over' : 'bct-under'}">
-        <span class="bct-side">${esc(b.side)}</span>
-        <span class="bct-ln">${esc(b.ln)}</span>
-        <span class="bct-proj">EDGE <b>${edgePct(p.ev)}</b></span>
-      </div>
-      <div class="bct-tiles">
-        <div class="bct-tile bct-best"><span class="bct-ribbon">${gone ? 'Gone' : 'Flag'}</span>
-          <div class="bct-tbk"><span class="bct-tdot ${bk[1]}"></span>${esc(bk[0])}</div>
-          <div class="bct-trow"><span class="bct-tln">${fmtOdds(px)}</span></div></div>
-        <div class="bct-tile">
-          <div class="bct-tbk"><span class="bct-tdot bct-dk"></span>${esc(p.ref_source || 'sharp')}</div>
-          <div class="bct-trow"><span class="bct-tln" style="font-size:19px">${esc(refLn)}</span><span class="bct-tpx">${fmtOdds(p.ref_price)}</span></div></div>
-      </div>
-      <div class="bct-cmeta">Fair <b>${p.fair_prob != null ? Math.round(+p.fair_prob * 100) + '%' : '--'}</b> &middot; seen ${p.seen_n || 1}x${more}${gone ? ' &middot; <b>price moved</b>' : ''}</div>
-      ${betBtn({ sport: (p.sport || '').toLowerCase(), source: 'edge', source_id: p.flag_id || null,
-                 rule: (p.sport === 'NHL' && p.market === 'player_shots' && p.book === 'hardrock') ? 'edge_hr_shots' : 'edge',
-                 slate_date: p.event_start ? String(p.event_start).slice(0, 10) : null, event_id: p.event_id || null, matchup: p.matchup || null,
-                 player: b.name || null, market: p.market, side: b.side, line: b.ln ? +b.ln : null, book: p.book, price: px })}
-    </div></div>`;
-}
-function edgeBoard(rows) {
-  const SP = ['NHL', 'NFL', 'NCAAF', 'NBA', 'MLB'];
-  const mine = rows.filter(r => r.bettable).sort((a, b) => SP.indexOf(a.sport) - SP.indexOf(b.sport));
-  const cell = 'font-family:\'JetBrains Mono\',monospace;font-size:11px';
-  const line = r => {
-    const u = +r.units || 0, graded = (+r.wins || 0) + (+r.losses || 0);
-    const clv = r.clv_n ? `${(+r.avg_clv * 100 >= 0 ? '+' : '')}${(+r.avg_clv * 100).toFixed(2)} pts <span style="color:var(--faint)">n=${r.clv_n}</span>` : '<span style="color:var(--faint)">no CLV yet</span>';
-    return `<div style="display:flex;justify-content:space-between;gap:8px;${cell};padding:6px 0;border-top:1px solid var(--line)">
-      <span><b style="color:var(--ink)">${esc(r.sport)}</b> ${graded ? `${r.wins || 0}&ndash;${r.losses || 0}` : `${r.picks} open`} &middot; <b style="color:${u >= 0 ? 'var(--over)' : 'var(--under)'}">${u >= 0 ? '+' : ''}${u.toFixed(2)}u</b></span>
-      <span>CLV ${clv}</span></div>`;
-  };
-  const tot = mine.reduce((a, r) => ({ w: a.w + (+r.wins || 0), l: a.l + (+r.losses || 0), u: a.u + (+r.units || 0), n: a.n + (+r.picks || 0) }), { w: 0, l: 0, u: 0, n: 0 });
-  return `<div class="wc-note"><b style="color:var(--acc)">PAPER ONLY.</b> Gate before any unit: 3 weeks of positive average CLV and a winning graded record. CLV clock restarted 10/2 &rarr; verdict ~10/23.</div>
-    <div class="bct-tile"><div class="bct-tbk">My books &middot; ${tot.n} picks &middot; ${tot.w}&ndash;${tot.l} &middot; ${tot.u >= 0 ? '+' : ''}${tot.u.toFixed(2)}u</div>
-    ${mine.map(line).join('') || '<div style="padding:8px 0;color:var(--mute)">Nothing graded yet.</div>'}</div>`;
-}
-function edgeResultRow(p) {
-  const b = edgeBet(p), bk = (EDGE_BOOK[p.book] || [p.book])[0];
-  const col = p.result === 'win' ? 'var(--over)' : p.result === 'loss' ? 'var(--under)' : 'var(--mute)';
-  const u = p.profit != null ? `${+p.profit >= 0 ? '+' : ''}${(+p.profit).toFixed(2)}u` : '';
-  const clv = p.clv != null ? ` &middot; CLV ${(+p.clv * 100 >= 0 ? '+' : '')}${(+p.clv * 100).toFixed(1)}` : '';
-  return `<div class="bct-tile" style="padding:8px 11px">
-    <div style="display:flex;justify-content:space-between;gap:8px;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:16px;text-transform:uppercase">
-      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.name || '')} ${esc(b.side)} ${esc(b.ln)}</span>
-      <span style="color:${col};flex:0 0 auto">${esc((p.result || '').toUpperCase())} ${u}</span></div>
-    <div class="bct-cmeta" style="margin-top:3px">${esc(p.sport)} ${esc(edgeMkt(p.market))} &middot; ${esc(bk)} ${fmtOdds(p.first_price != null ? p.first_price : p.price)}${p.actual != null ? ` &middot; actual ${+p.actual}` : ''}${clv}</div></div>`;
-}
-
-/* ── NHL tab: Edge shots-on-goal flags at my books. "Best" = flagged 1h+ before puck drop AND at one book only ── */
-const nhlEarly = p => (new Date(p.event_start) - new Date(p.first_seen)) >= 3600000;
-const nhlBest = p => nhlEarly(p) && !(+p.n_books >= 2);
-function nhlChip(p) {
-  if (nhlBest(p)) return '<span class="bct-placechip">&#10003; Early &middot; 1 Book</span>';
-  const why = [nhlEarly(p) ? '' : 'Late', +p.n_books >= 2 ? `${p.n_books} Books` : ''].filter(Boolean).join(' &middot; ');
-  return `<span class="bct-placechip" style="color:var(--acc);border-color:var(--acc-d)">${why}</span>`;
-}
-function nhlBoard(rows) {
-  const G = [['early', 'one', '&#10003; Early &middot; one book'], ['early', 'multi', 'Early &middot; several books'],
-             ['late', 'one', 'Late &middot; one book'], ['late', 'multi', 'Late &middot; several books']];
-  const cell = 'font-family:\'JetBrains Mono\',monospace;font-size:11px';
-  const sum = rs => rs.reduce((a, r) => ({ w: a.w + (+r.wins || 0), l: a.l + (+r.losses || 0), u: a.u + (+r.units || 0), x: a.x + (+r.expected_units || 0), o: a.o + (+r.ungraded || 0) }), { w: 0, l: 0, u: 0, x: 0, o: 0 });
-  const sg = x => (x >= 0 ? '+' : '') + x.toFixed(2);
-  const line = (lbl, t) => `<div style="display:flex;justify-content:space-between;gap:8px;${cell};padding:6px 0;border-top:1px solid var(--line)">
-      <span><b style="color:var(--ink)">${lbl}</b></span>
-      <span>${t.w}&ndash;${t.l} &middot; <b style="color:${t.u >= 0 ? 'var(--over)' : 'var(--under)'}">${sg(t.u)}u</b> <span style="color:var(--faint)">exp ${sg(t.x)}</span></span></div>`;
-  const tot = sum(rows);
-  return `<div class="wc-note"><b style="color:var(--acc)">PAPER ONLY.</b> Early = flagged an hour or more before puck drop. One book = only one of your books was off the sharp price. "exp" is what the edge sizes predicted. Gate verdict ~10/23.</div>
-    <div class="bct-tile"><div class="bct-tbk">NHL shots &middot; my books &middot; ${tot.w}&ndash;${tot.l} &middot; ${sg(tot.u)}u${tot.o ? ` &middot; ${tot.o} open` : ''}</div>
-    ${G.map(g => line(g[2], sum(rows.filter(r => r.timing === g[0] && r.books === g[1])))).join('')}</div>`;
-}
-
-/* ── parlay card: reads raya_parlay_log (legs json = [{text, price, key}]) ── */
-const SPORT_LBL = { mlb_k: 'Strikeouts', wnba: 'WNBA', nfl: 'NFL' };
-function parlayCard(p, i) {
-  const legs = Array.isArray(p.legs) ? p.legs : [];
-  const isFD = p.book === 'fanduel';
-  const bk = isFD ? 'FanDuel' : p.book === 'betmgm' ? 'BetMGM' : 'DraftKings';
-  const dot = isFD ? 'bct-fd' : 'bct-dk';
-  const res = p.result ? `<span class="bct-tpx" style="color:${p.result==='win'?'var(--over)':p.result==='loss'?'var(--under)':'var(--mute)'}">${p.result.toUpperCase()} ${p.profit_units!=null?(p.profit_units>=0?'+':'')+(+p.profit_units).toFixed(2)+'u':''}</span>` : '<span class="bct-tpx bct-na">pending</span>';
-  const legHTML = legs.map(l => `<div class="bct-trow" style="margin-top:6px"><span class="bct-tln" style="font-size:17px">${esc(l.text)}</span></div>`).join('');
-  return `<div class="bct-card">
-    <div class="bct-rail"><div class="bct-rank" style="font-size:22px"><b>${p.n_legs}-LEG</b>${String(i).padStart(2,'0')}</div></div>
-    <div class="bct-main">
-      <div class="bct-name">${SPORT_LBL[p.sport] || esc(p.sport)}</div>
-      <div class="bct-match">${p.n_legs}-leg parlay &middot; ${esc(p.slate_date||'')}</div>
-      <div class="bct-bet" style="border-color:var(--acc-d);background:color-mix(in oklch,var(--acc) 9%,transparent)">
-        <span class="bct-side" style="color:var(--acc)">${fmtOdds(p.parlay_american)}</span>
-        <span class="bct-ln" style="font-size:14px;color:var(--mute)">1u &rarr; ${p.parlay_dec!=null?(+p.parlay_dec-1).toFixed(2):'--'}u</span>
-        <span class="bct-proj">${res}</span>
-      </div>
-      <div class="bct-tile bct-best"><span class="bct-ribbon">Raya Bet</span>
-        <div class="bct-tbk"><span class="bct-tdot ${dot}"></span>${bk} &middot; all legs</div>
-        ${legHTML}
-      </div>
-      ${p.result ? '' : betBtn({ sport: p.sport, source: 'parlay', source_id: p.id || null, rule: 'parlay_' + p.n_legs + 'leg', slate_date: p.slate_date || null,
-                 player: legs.map(l => l.text).join(' + '), market: 'parlay', side: null, line: null, book: p.book, price: p.parlay_american })}
-    </div></div>`;
-}
-function parlayRecord(rows) {
-  const g = rows.filter(r => r.result === 'win' || r.result === 'loss');
-  if (!g.length) return `<div class="bct-empty" style="padding:18px">Record builds as parlays settle (graded 6:30 AM ET).</div>`;
-  const line = (label, rs) => {
-    if (!rs.length) return '';
-    const w = rs.filter(r => r.result === 'win').length, u = rs.reduce((s, r) => s + (+r.profit_units || 0), 0);
-    return `<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 0;border-top:1px solid var(--line)"><span>${label}</span><span>${w}&ndash;${rs.length - w} &middot; <b style="color:${u>=0?'var(--over)':'var(--under)'}">${u>=0?'+':''}${u.toFixed(2)}u</b></span></div>`;
-  };
-  return `<div class="bct-tile" style="margin-top:4px"><div class="bct-tbk">Parlay record &middot; ${g.length} graded</div>
-    ${line('K 2-leg', g.filter(r => r.sport==='mlb_k' && r.n_legs===2))}
-    ${line('WNBA 2-leg', g.filter(r => r.sport==='wnba' && r.n_legs===2))}
-    ${line('WNBA 3-leg', g.filter(r => r.sport==='wnba' && r.n_legs===3))}
-    ${line('NFL 2-leg', g.filter(r => r.sport==='nfl' && r.n_legs===2))}
-    ${line('All', g)}</div>`;
+function ruleBoard(rows) {
+  const by = {};
+  rows.forEach(r => { (by[r.rule] = by[r.rule] || []).push(r); });
+  const keys = Object.keys(by).sort((a, b) => tally(by[b]).net - tally(by[a]).net);
+  if (!keys.length) return '';
+  const line = k => { const t = tally(by[k]); return `<div style="display:flex;justify-content:space-between;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 0;border-top:1px solid var(--line)">
+      <span>${esc(ruleLbl(k))}</span><span style="white-space:nowrap">${t.w}&ndash;${t.l}${t.open ? ` <span style="color:var(--faint)">+${t.open} open</span>` : ''} &middot; <b style="color:${t.net >= 0 ? 'var(--over)' : 'var(--under)'}">${money(t.net)}</b></span></div>`; };
+  return `<div class="bct-tile" style="margin-bottom:10px"><div class="bct-tbk">By rule &middot; all time</div>${keys.map(line).join('')}</div>`;
 }
 
 function shell(metaTitle, metaSub, body, footL, footR) {
-  const subtabs = view === 'k' ? `
-    <div class="subtabs" style="justify-content:flex-end">
-      <div class="subtab ${kmode==='flat'?'on':''}" data-kmode="flat" style="flex:0 0 auto;padding:7px 16px">Flat 1u</div>
-      <div class="subtab ${kmode==='kelly'?'on':''}" data-kmode="kelly" style="flex:0 0 auto;padding:7px 16px">&frac14;-Kelly</div>
-    </div>` : view === 'wnba' ? `
-    <div class="subtabs">
-      <div class="subtab ${wnbaStat==='place'?'on':''}" data-wstat="place">&#10003;</div>
-      <div class="subtab ${wnbaStat==='all'?'on':''}" data-wstat="all">All</div>
-      <div class="subtab ${wnbaStat==='points'?'on':''}" data-wstat="points">Pts</div>
-      <div class="subtab ${wnbaStat==='rebounds'?'on':''}" data-wstat="rebounds">Reb</div>
-      <div class="subtab ${wnbaStat==='assists'?'on':''}" data-wstat="assists">Ast</div>
-      <div class="subtab ${wnbaStat==='threes'?'on':''}" data-wstat="threes">3PM</div>
-    </div>` : view === 'nfl' ? `
-    <div class="subtabs">
-      <div class="subtab ${nflMode==='place'?'on':''}" data-nfl="place">&#10003; Place</div>
-      <div class="subtab ${nflMode==='overs'?'on':''}" data-nfl="overs">&#9650; Overs</div>
-      <div class="subtab ${nflMode==='all'?'on':''}" data-nfl="all">All</div>
-    </div>` : view === 'nhl' ? `
-    <div class="subtabs">
-      <div class="subtab ${nhlMode==='hr'?'on':''}" data-nhl="hr">&#128176; Hard Rock</div>
-      <div class="subtab ${nhlMode==='best'?'on':''}" data-nhl="best">&#10003; Best</div>
-      <div class="subtab ${nhlMode==='all'?'on':''}" data-nhl="all">All</div>
-      <div class="subtab ${nhlMode==='results'?'on':''}" data-nhl="results">Results</div>
-    </div>` : view === 'edge' ? `
-    <div class="subtabs">
-      <div class="subtab ${edgeMode==='live'?'on':''}" data-edge="live">My Books</div>
-      <div class="subtab ${edgeMode==='all'?'on':''}" data-edge="all">All Books</div>
-      <div class="subtab ${edgeMode==='results'?'on':''}" data-edge="results">Results</div>
-    </div>` : view === 'findings' ? `<div class="subtabs">
+  const subtabs = betsMode === 'findings' ? `<div class="subtabs">
       <div class="subtab ${findMode==='open'?'on':''}" data-find="open">Open</div>
       <div class="subtab ${findMode==='applied'?'on':''}" data-find="applied">Applied</div>
       <div class="subtab ${findMode==='rejected'?'on':''}" data-find="rejected">Rejected</div>
@@ -712,167 +306,46 @@ function shell(metaTitle, metaSub, body, footL, footR) {
       <div class="bct-meta"><b>${metaTitle}</b><span>${metaSub}</span></div>
     </div>
     <div class="tabs">
-      <div class="tab ${view==='k'?'on':''}" data-view="k">Strikeout</div>
-      <div class="tab ${view==='wnba'?'on':''}" data-view="wnba">WNBA</div>
-      <div class="tab ${view==='nfl'?'on':''}" data-view="nfl">NFL</div>
-      <div class="tab ${view==='nhl'?'on':''}" data-view="nhl">NHL</div>
-      <div class="tab ${view==='parlay'?'on':''}" data-view="parlay">Parlays</div>
-      <div class="tab ${view==='edge'?'on':''}" data-view="edge">Edge</div>
-      <div class="tab ${view==='bets'?'on':''}" data-view="bets">Bets</div>
-      <div class="tab ${view==='findings'?'on':''}" data-view="findings">Findings</div>
+      <div class="tab on" data-view="bets" style="flex:1 1 100%">Bets</div>
+    </div>
+    <div class="subtabs">
+      <div class="subtab ${betsMode==='night'?'on':''}" data-bets="night" style="font-size:12px;padding:9px">Last Night</div>
+      <div class="subtab ${betsMode==='findings'?'on':''}" data-bets="findings" style="font-size:12px;padding:9px">Findings</div>
     </div>
     ${subtabs}
     <div class="bct-list" id="list">${body}</div>
     <div class="bct-foot"><span>${footL}${footL?' &middot; ':''}<b>${BUILD}</b></span>
       <span>${footR} &middot; <a id="signout">Sign out</a></span></div>
   </div>`;
-  app.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; render(); });
-  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.kmode) { kmode = t.dataset.kmode; } else if (t.dataset.wstat) { wnbaStat = t.dataset.wstat; } else if (t.dataset.nfl) { nflMode = t.dataset.nfl; } else if (t.dataset.nhl) { nhlMode = t.dataset.nhl; } else if (t.dataset.edge) { edgeMode = t.dataset.edge; } else if (t.dataset.find) { findMode = t.dataset.find; } render(); });
+  app.querySelectorAll('.subtab').forEach(t => t.onclick = () => { if (t.dataset.bets) { betsMode = t.dataset.bets; } else if (t.dataset.find) { findMode = t.dataset.find; } render(); });
   const so = document.getElementById('signout');
   if (so) so.onclick = async () => { await sb.auth.signOut(); route(); };
-  wireBets(app);
 }
 
 async function render() {
   app.innerHTML = `<div class="loading">Loading…</div>`;
-  if (view === 'k') {
-    const { data, error } = await sb.from('mlb_k_brief').select('*').order('rank', { ascending: true });
-    if (error) return shell('Strikeout Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
-    const picks = data || [];
-    _kStakes = computeKStakes(picks);
-    const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
-      { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
-    const body = picks.length ? picks.map((p,idx)=>kCard(p,idx+1)).join('')
-                              : '<div class="bct-empty">No picks posted yet today.</div>';
-    shell('Strikeout Brief', `${dateLbl} &middot; Opening Lines`, body,
-          `${picks.length} Strikeout Calls`, 'Model <b>linreg_k_v1</b>');
-  } else if (view === 'parlay') {
-    const { data, error } = await sb.from('raya_parlay_log').select('*').order('slate_date', { ascending: false }).order('built_at', { ascending: false }).limit(60);
-    if (error) return shell('Parlay Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
-    const rows = data || [];
-    const latest = rows[0]?.slate_date;
-    const today = rows.filter(r => r.slate_date === latest);
-    const dateLbl = latest ? new Date(latest + 'T12:00:00').toLocaleDateString('en-US',
-      { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
-    const rec = parlayRecord(rows);
-    const body = today.length ? today.map((p,idx)=>parlayCard(p,idx+1)).join('') + rec
-                              : '<div class="bct-empty">No parlays built yet today.</div>' + rec;
-    shell('Parlay Brief', `${dateLbl} &middot; One Book &middot; Different Games`, body,
-          `${today.length} Parlays`, 'Size <b>&frac14;&ndash;&frac12;u</b>');
-  } else if (view === 'nfl') {
-    // NFL props brief — latest week only (display table can carry stale weeks), slate_date joined from the log
-    const [{ data, error }, { data: lg }] = await Promise.all([
-      sb.from('nfl_props_brief').select('*').order('week', { ascending: false }).order('rank', { ascending: true }).limit(200),
-      sb.from('nfl_props_brief_log').select('id,week,slate_date,player,stat,bet_side,line').order('week', { ascending: false }).limit(400)
-    ]);
-    if (error) return shell('NFL Props Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
-    let picks = data || [];
-    const week = picks.length ? picks[0].week : null;
-    picks = picks.filter(p => p.week === week);
-    const slateOf = {};
-    const idOf = {};
-    (lg || []).filter(r => r.week === week).forEach(r => { const k = r.player + '|' + r.stat + '|' + r.bet_side; slateOf[k] = r.slate_date; idOf[k] = r.id; });
-    picks.forEach(p => { const k = p.player_name + '|' + p.stat + '|' + p.bet_side; p._slate = slateOf[k] || null; p._logid = idOf[k] || null; });
-    // played games sink to the bottom, otherwise brief rank
-    picks.sort((a, b) => ((a._slate && a._slate < _todayET()) - (b._slate && b._slate < _todayET())) || (a.rank - b.rank));
-    if (nflMode === 'place') picks = picks.filter(p => p.place_flag === 1);
-    else if (nflMode === 'overs') picks = picks.filter(p => p.overs_flag === 1);
-    const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
-      { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
-    let body = picks.length ? picks.map((p,idx)=>nflCard(p,idx+1,p._slate)).join('')
-                              : `<div class="bct-empty">${nflMode==='place'?'No &#10003; picks this week.':nflMode==='overs'?'No &#9650; Overs picks this week.':'No NFL picks posted yet this week.'}</div>`;
-    // recommended parlay: top two check picks from different games (built by raya_nfl_parlay_live.py)
-    if (nflMode === 'place') {
-      const { data: npl } = await sb.from('raya_parlay_log').select('*').eq('sport', 'nfl').order('built_at', { ascending: false }).limit(40);
-      const nrec = (npl || []).find(r => !r.result);
-      const ng = (npl || []).filter(r => r.result === 'win' || r.result === 'loss');
-      const hdr = t => `<div class="bct-tbk" style="padding:12px 4px 6px;letter-spacing:.08em">${t}</div>`;
-      const recLine = ng.length ? `<div class="bct-cmeta" style="padding:0 4px 8px">Parlay record ${ng.filter(r => r.result === 'win').length}&ndash;${ng.filter(r => r.result === 'loss').length} &middot; ${(ng.reduce((s, r) => s + (+r.profit_units || 0), 0) >= 0 ? '+' : '') + ng.reduce((s, r) => s + (+r.profit_units || 0), 0).toFixed(2)}u</div>` : '';
-      if (nrec) body = hdr('RECOMMENDED PARLAY &middot; TOP TWO &middot; DIFFERENT GAMES') + parlayCard(nrec, 1) + recLine + hdr('SINGLES') + body;
-    }
-    shell('NFL Props Brief', `${week?`WEEK ${week} &middot; `:''}${dateLbl} &middot; DK/FD Lines`, body,
-          `${picks.length} NFL Calls`, nflMode === 'overs' ? 'Rule <b>Overs &middot; REC / REC YDS / RUSH YDS &middot; DK/FD &ge; &minus;120</b>' : 'Model <b>ewma16 &middot; Under-only &#10003;</b>');
-  } else if (view === 'bets') {
-    const [{ data: rows, error }, { data: board }] = await Promise.all([
-      sb.from('raya_bets').select('*').order('placed_at', { ascending: false }).limit(120),
-      sb.from('raya_bets_scoreboard').select('*')
-    ]);
+  if (betsMode === 'night') {
+    // Real money only: confirmed rows (Novig trader fills + anything Brandon confirmed by hand). Auto-logged push rows are unconfirmed and stay out.
+    const { data, error } = await sb.from('raya_bets').select('*').eq('confirmed', true).neq('rule', 'test_button').order('placed_at', { ascending: false }).limit(1000);
     if (error) return shell('Bets','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
-    const g = (rows || []).filter(r => r.result === 'win' || r.result === 'loss');
-    const tot = g.reduce((s, r) => s + (+r.profit_units || 0), 0), stk = g.reduce((s, r) => s + (+r.stake || 0), 0);
-    const sg = x => (x >= 0 ? '+' : '') + (+x).toFixed(2);
-    const bline = (board || []).map(r => `<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 0;border-top:1px solid var(--line)"><span>${esc(r.rule)}</span><span>${r.wins}&ndash;${(r.n || 0) - (r.wins || 0)} &middot; <b style="color:${(r.units || 0) >= 0 ? 'var(--over)' : 'var(--under)'}">${sg(r.units || 0)}u</b> on ${(+r.staked || 0).toFixed(1)}u</span></div>`).join('');
-    const boardHTML = `<div class="bct-tile" style="margin-bottom:10px"><div class="bct-tbk">Real money &middot; ${g.length} settled &middot; <b style="color:${tot >= 0 ? 'var(--over)' : 'var(--under)'}">${sg(tot)}u</b> on ${stk.toFixed(1)}u${stk ? ` &middot; ROI ${sg(100 * tot / stk)}%` : ''}</div>${bline || '<div class="bct-cmeta" style="padding:6px 0">Nothing settled yet.</div>'}</div>`;
-    const manual = `<div class="bct-tile" style="margin-bottom:10px"><div class="bct-tbk">Log a bet by hand</div>
-      <div class="betform" style="grid-template-columns:1fr 1fr" id="mform">
-        <select name="sport"><option value="nfl">NFL</option><option value="nhl">NHL</option><option value="ncaaf">NCAAF</option><option value="nba">NBA</option><option value="mlb_k">MLB</option><option value="other">Other</option></select>
-        <input name="player" placeholder="player / team">
-        <input name="market" placeholder="market (rec yds, ML...)">
-        <input name="sideline" placeholder="side + line (Over 5.5)">
-        <select name="book">${BET_BOOKS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
-        <input name="price" type="number" step="1" placeholder="price (-110)">
-        <input name="stake" type="number" step="0.25" value="1" placeholder="units">
-        <button id="msave">Save</button></div></div>`;
-    const rowHTML = (rows || []).map(r => {
-      _bets['row' + r.id] = r;
-      const res = r.result ? `<span class="bct-tpx" style="color:${r.result === 'win' ? 'var(--over)' : r.result === 'loss' ? 'var(--under)' : 'var(--mute)'}">${r.result.toUpperCase()} ${r.profit_units != null ? sg(r.profit_units) + 'u' : ''}</span>`
-        : `<span class="betrow" style="margin:0"><button class="res w" data-res="${r.id}:win">W</button><button class="res l" data-res="${r.id}:loss">L</button><button class="res" data-res="${r.id}:push">P</button></span>`;
-      const bk = (EDGE_BOOK[r.book] || [r.book])[0];
-      return `<div class="bct-card"><div class="bct-rail"><div class="bct-rank" style="font-size:18px"><b>${esc((r.sport || '').toUpperCase())}</b>${esc(String(r.rule || '').replace(/^(nfl|edge)_/, '').slice(0, 6))}</div></div>
-        <div class="bct-main"><div class="bct-name" style="font-size:20px">${esc(r.player || r.matchup || r.market || '')}</div>
-        <div class="bct-match">${esc(r.market || '')}${r.side ? ' &middot; ' + esc(r.side) + (r.line != null ? ' ' + r.line : '') : ''} &middot; ${esc(bk || '')} ${fmtOdds(r.price)} &middot; ${(+r.stake).toFixed(2)}u &middot; ${esc(r.slate_date || String(r.placed_at).slice(0, 10))}</div>
-        <div class="bct-cmeta" style="margin-top:6px;display:flex;align-items:center;gap:8px">${res}</div></div></div>`;
-    }).join('');
-    shell('Bets', 'Real Money &middot; What Was Actually Placed', boardHTML + manual + (rowHTML || '<div class="bct-empty">No bets logged yet. Tap Bet on any card.</div>'), `${(rows || []).length} Bets`, 'Graded <b>7:10 AM ET</b>');
-    const ms = document.getElementById('msave');
-    if (ms) ms.onclick = async () => {
-      const f = document.getElementById('mform'), v = n => f.querySelector(`[name=${n}]`).value.trim();
-      const m = v('sideline').match(/^(over|under|o|u)?\s*([\-\d.]+)?/i) || [];
-      const price = parseInt(v('price'), 10), stake = parseFloat(v('stake'));
-      if (!price || !stake) return;
-      const rec = { sport: v('sport'), source: 'manual', rule: 'manual', slate_date: todayETd(), player: v('player') || null, market: v('market') || null,
-                    side: m[1] ? (m[1].toLowerCase().startsWith('o') ? 'Over' : 'Under') : (v('sideline') || null), line: m[2] ? +m[2] : null, book: v('book'), price, stake };
-      const { error } = await sb.from('raya_bets').insert(rec);
-      if (error) { ms.textContent = 'Error'; console.error(error); return; }
-      render();
-    };
-  } else if (view === 'nhl') {
-    // NHL shots-on-goal: Edge price flags at my books (paper). Best = early + one book.
-    if (nhlMode === 'results') {
-      const [{ data: tg, error }, { data: rec }] = await Promise.all([
-        sb.from('edge_scoreboard_tags').select('*').eq('sport', 'NHL').eq('bettable', true),
-        sb.from('edge_picks').select('*').eq('sport', 'NHL').eq('bettable', true).not('result', 'is', null).order('event_start', { ascending: false }).limit(40)
-      ]);
-      if (error) return shell('NHL Shots','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
-      const body = nhlBoard(tg || []) + ((rec || []).length ? (rec || []).map(edgeResultRow).join('') : '<div class="bct-empty" style="padding:18px">No graded flags yet.</div>');
-      return shell('NHL Shots', 'Paper Scoreboard &middot; My Books', body, `${(rec || []).length} Recent`, 'Ref <b>Pinnacle</b>');
-    }
-    if (nhlMode === 'hr') {
-      // 10/19: the bet list. Raw flags, same filter as the scanner's push rule (NHL / player_shots / hardrock), newest first.
-      const since = new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 19) + 'Z';
-      const { data: hr, error: herr } = await sb.from('edge_flags').select('*').eq('sport', 'NHL').eq('market', 'player_shots').eq('book', 'hardrock')
-        .gt('event_start', since).order('first_seen', { ascending: false }).limit(150);
-      if (herr) return shell('NHL Shots','', `<div class="bct-empty">Couldn't load.<br>${esc(herr.message)}</div>`, '', '');
-      const now = Date.now();
-      const rows = (hr || []).filter(p => !p.result).sort((a, b) => ((a.active !== 1) - (b.active !== 1)) || (new Date(b.first_seen) - new Date(a.first_seen)));
-      const live = rows.filter(p => p.active === 1 && new Date(p.event_start) > now).length;
-      const chip = p => p.active === 1 ? '<span class="bct-placechip">&#128176; BET &middot; Hard Rock</span>'
-                                       : '<span class="bct-placechip" style="color:var(--mute);border-color:var(--line)">Gone</span>';
-      const body = rows.length ? rows.map((p, idx) => edgeCard(p, idx + 1, chip(p))).join('')
-                               : `<div class="bct-empty">No Hard Rock shots flags right now.<br><span style="font-size:12px">This list is exactly what the BET push sends. Games are scanned inside 6 hours of puck drop.</span></div>`;
-      return shell('NHL Shots', 'Hard Rock &middot; Shots on Goal &middot; as pushed', body, `${live} Live`, 'Real money <b>Hard Rock only</b>');
-    }
-    const { data, error } = await sb.from('edge_picks').select('*').eq('sport', 'NHL').eq('bettable', true).gt('event_start', new Date().toISOString().slice(0, 19) + 'Z').order('ev', { ascending: false }).limit(150);
-    if (error) return shell('NHL Shots','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
-    let picks = data || [];
-    if (nhlMode === 'best') picks = picks.filter(nhlBest);
-    picks.sort((a, b) => ((a.active !== 1) - (b.active !== 1)) || (b.ev - a.ev));
-    const live = picks.filter(p => p.active === 1).length;
-    const body = picks.length ? picks.map((p, idx) => edgeCard(p, idx + 1, nhlChip(p))).join('')
-                              : `<div class="bct-empty">${nhlMode === 'best' ? 'No &#10003; flags right now.' : 'No NHL flags right now.'}<br><span style="font-size:12px">Games are scanned inside 6 hours of puck drop.</span></div>`;
-    shell('NHL Shots', `Shots on Goal &middot; ${nhlMode === 'best' ? 'Early &middot; One Book' : 'All Flags'} &middot; My Books`, body,
-          `${live} Live Flags`, 'Paper <b>gate not passed</b>');
-  } else if (view === 'findings') {
+    const all = (data || []).filter(r => !/ignore|test fill/i.test(r.notes || ''));
+    const inWin = (w, r) => { const t = new Date(r.placed_at); return t >= w.start && t < w.end; };
+    const last = nightWindow(1), cur = nightWindow(0);
+    const lastRows = all.filter(r => inWin(last, r));
+    const curRows = all.filter(r => inWin(cur, r));
+    const week = all.filter(r => new Date(r.placed_at) >= new Date(+last.start - 6 * 86400000));
+    let body = summaryTile('Last night', last.label, tally(lastRows), true);
+    if (curRows.length) body += summaryTile('Tonight so far', cur.label, tally(curRows), false);
+    body += summaryTile('Last 7 nights', '', tally(week), false);
+    body += summaryTile('All time', `since ${all.length ? new Date(all[all.length - 1].placed_at).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '--'}`, tally(all), false);
+    body += ruleBoard(all);
+    const hdr = t => `<div class="bct-tbk" style="padding:10px 4px 6px;letter-spacing:.08em">${t}</div>`;
+    body += hdr(`LAST NIGHT'S BETS &middot; ${lastRows.length}`);
+    body += lastRows.length ? lastRows.map(betRow).join('') : '<div class="bct-empty" style="padding:18px">No real-money bets last night.</div>';
+    if (curRows.length) body += hdr(`TONIGHT &middot; ${curRows.length}`) + curRows.map(betRow).join('');
+    const t = tally(all);
+    shell('Bets', 'Real Money &middot; Novig + confirmed', body, `${all.length} Bets`, `All time <b style="color:${t.net >= 0 ? 'var(--over)' : 'var(--under)'}">${money(t.net)}</b>`);
+  } else {
     // Raya Analyst (tools/raya_analyst.py, Mondays 8 AM): every track + every cut that cleared the noise bar. Brandon decides here.
     const { data, error } = await sb.from('raya_findings').select('*').limit(1000);
     if (error) return shell('Findings','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
@@ -914,41 +387,6 @@ async function render() {
       if (error) { b.textContent = 'Err'; console.error(error); return; }
       render();
     }; });
-  } else if (view === 'edge') {
-    if (edgeMode === 'results') {
-      const [{ data: sbd, error }, { data: rec }] = await Promise.all([
-        sb.from('edge_scoreboard').select('*'),
-        sb.from('edge_picks').select('*').eq('bettable', true).not('result', 'is', null).order('event_start', { ascending: false }).limit(40)
-      ]);
-      if (error) return shell('Raya Edge','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
-      const body = edgeBoard(sbd || []) + ((rec || []).length ? (rec || []).map(edgeResultRow).join('') : '<div class="bct-empty" style="padding:18px">No graded flags yet.</div>');
-      return shell('Raya Edge', 'Paper Scoreboard &middot; My Books', body, `${(rec || []).length} Recent`, 'Ref <b>Pinnacle</b>');
-    }
-    const { data, error } = await sb.from('edge_picks').select('*').gt('event_start', new Date().toISOString().slice(0, 19) + 'Z').order('ev', { ascending: false }).limit(150);
-    if (error) return shell('Raya Edge','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
-    let picks = data || [];
-    if (edgeMode === 'live') picks = picks.filter(p => p.bettable);
-    picks.sort((a, b) => ((a.active !== 1) - (b.active !== 1)) || (b.ev - a.ev));
-    const live = picks.filter(p => p.active === 1).length;
-    const body = picks.length ? picks.map((p, idx) => edgeCard(p, idx + 1)).join('')
-                              : '<div class="bct-empty">No live flags right now.<br><span style="font-size:12px">Games are scanned inside 6&ndash;8 hours of start.</span></div>';
-    shell('Raya Edge', `Sharp vs Soft &middot; ${edgeMode === 'live' ? 'DK / FD / MGM / Hard Rock' : 'All Books'}`, body,
-          `${live} Live Flags`, 'Paper <b>gate not passed</b>');
-  } else {
-    // WNBA props brief — multi-book pick board (open lines), forward-test
-    let q = sb.from('wnba_props_brief').select('*').order('slate_date', { ascending: false }).order('rank', { ascending: true }).limit(120);
-    const { data, error } = await q;
-    if (error) return shell('WNBA Props Brief','', `<div class="bct-empty">Couldn't load.<br>${esc(error.message)}</div>`, '', '');
-    let picks = data || [];
-    if (picks.length) { const latest = picks[0].slate_date; picks = picks.filter(p => p.slate_date === latest); }
-    if (wnbaStat === 'place') picks = picks.filter(p => p.place_flag === 1 && p.rank <= 5);
-    else if (wnbaStat !== 'all') picks = picks.filter(p => p.stat === wnbaStat);
-    const dateLbl = picks[0]?.run_at ? new Date(picks[0].run_at).toLocaleDateString('en-US',
-      { weekday:'short', month:'short', day:'numeric', year:'numeric' }).toUpperCase() : '';
-    const body = picks.length ? picks.map((p,idx)=>wnbaCard(p,idx+1)).join('')
-                              : '<div class="bct-empty">No WNBA picks posted yet today.</div>';
-    shell('WNBA Props Brief', `${dateLbl} &middot; Opening Lines`, body,
-          `${picks.length} WNBA Calls`, 'Model <b>min-anchor-v1</b>');
   }
 }
 
