@@ -206,7 +206,7 @@ const BUILD = 'v9.0 / 2026-10-28';
 
 // Dollars per logged unit when a row's notes don't carry a "$" amount (Novig fills do: "$25.00 order …").
 // Novig trader logs stake in 5-dollar units ($25 order = 5.0u), so 5 is the live default.
-const UNIT_DOLLARS = 5;
+const UNIT_DOLLARS = 25; // UNIT25_1030: 1u = one $25 order
 
 const BOOK_LBL = { novig:'Novig', draftkings:'DraftKings', fanduel:'FanDuel', hardrock:'Hard Rock', betmgm:'BetMGM', caesars:'Caesars', thescore:'theScore' };
 const RULE_LBL = { novig_nba_edge:'NBA Edge', novig_nfl_edge:'NFL Edge', novig_nfl_overs:'NFL ▲ Overs', novig_nhl_shots:'NHL Shots', novig_hr_shots:'NHL Shots (HR ref)',
